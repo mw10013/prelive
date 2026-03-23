@@ -1,136 +1,372 @@
 # GraphQL Client Research for TypeScript
 
 **Date:** 2026-03-23
-**Context:** Client-side TypeScript app hitting a GraphQL Yoga server
+**Context:** Client hitting liveql — a GraphQL Yoga server for Ableton Live's Object Model
 **Stack:** React 19, TanStack Query 5.95, TanStack Router/Start, Effect 4.0 (beta), TypeScript 5.8, Vite 7
+**Server:** `http://localhost:4000`, GraphQL Yoga, serves GraphiQL at the same address
 
 ---
 
-## The Server Side
+## The Server Schema (liveql)
 
-The GraphQL server uses **GraphQL Yoga** (`graphql-yoga`), maintained by **The Guild**. Yoga is their fully-featured, cross-platform GraphQL server. The Guild's full ecosystem:
+The liveql server exposes Ableton Live's LOM through GraphQL. Here is the full schema (from `liveql-n4m.js`):
 
-- **GraphQL Yoga** — server
-- **GraphQL Code Generator** (`@graphql-codegen/cli`) — generates types, hooks, SDKs from schema + operations
-- **Envelop** — plugin system for GraphQL servers
-- **Hive** — schema registry + analytics
-- **GraphQL Mesh** — API gateway/stitching
-- **Hive Gateway** — federation router
+```graphql
+type Query {
+  live_set: Song!
+}
 
-The Guild's official recommendation for client-side TypeScript work is **GraphQL Code Generator**.
+type Song {
+  id: Int!
+  path: String!
+  is_playing: Boolean!
+  view: SongView!
+  track(index: Int!): Track
+  tracks: [Track!]!
+}
+
+type SongView {
+  id: Int!
+  path: String!
+  selected_track: Track
+  detail_clip: Clip
+}
+
+type Track {
+  id: Int!
+  path: String!
+  clip_slot(index: Int!): ClipSlot
+  clip_slots: [ClipSlot!]!
+  has_midi_input: Boolean!
+  name: String!
+}
+
+type ClipSlot {
+  id: Int!
+  path: String!
+  clip: Clip
+  has_clip: Boolean!
+}
+
+type Clip {
+  id: Int!
+  path: String!
+  end_time: Float!
+  is_arrangement_clip: Boolean!
+  is_midi_clip: Boolean!
+  length: Float!
+  looping: Boolean!
+  name: String!
+  signature_denominator: Int!
+  signature_numerator: Int!
+  start_time: Float!
+  notes: [Note!]
+}
+
+type Note {
+  note_id: Int!
+  pitch: Int!
+  start_time: Float!
+  duration: Float!
+  velocity: Float!
+  mute: Boolean!
+  probability: Float!
+  velocity_deviation: Float!
+  release_velocity: Float!
+}
+
+type Mutation {
+  song_start_playing(id: Int!): Song
+  song_stop_playing(id: Int!): Song
+  track_set_name(id: Int!, name: String!): Track
+  clip_set_looping(id: Int!, looping: Boolean!): Clip
+  clip_set_properties(id: Int!, properties: ClipPropertiesInput!): Clip
+  clip_add_new_notes(id: Int!, notes_dictionary: NotesDictionaryInput!): Clip
+  clip_apply_note_modifications(id: Int!, notes_dictionary: NotesDictionaryInput!): Clip
+  clip_fire(id: Int!): Clip
+  clip_get_notes_extended(id: Int!, from_pitch: Int!, pitch_span: Int!, from_time: Float!, time_span: Float!): NotesDictionary!
+  clip_get_selected_notes_extended(id: Int!): NotesDictionary!
+  clip_select_all_notes(id: Int!): Clip
+  clip_remove_notes_by_id(id: Int!, ids: [Int!]!): Clip
+  clip_remove_notes_extended(id: Int!, from_pitch: Int!, pitch_span: Int!, from_time: Float!, time_span: Float!): Clip
+}
+```
 
 ---
 
-## The Compile-Time vs Runtime Type Safety Problem
+## GraphQL Primer (the terminology)
 
-**Correct observation:** codegen and gql.tada give you **compile-time type safety only**. They derive TypeScript types from the GraphQL schema at build time. The TS compiler enforces that your code uses the right fields, variables, and shapes.
+GraphQL has three operation types:
+- **Query** — read data
+- **Mutation** — write data
+- **Subscription** — real-time updates (liveql doesn't use these)
 
-**What they do NOT do:** validate the actual JSON coming over the wire at runtime. If the server:
-- Returns a `null` where the schema says `String!`
-- Has a bug that sends `{ name: 123 }` instead of `{ name: "Alice" }`
-- Changes its schema without your codegen running
-- Returns partial data with errors
+A **query string** is a GraphQL document that describes what data you want:
 
-...your app will happily `json.data as TResult` and you'll get runtime errors in unrelated places.
-
-**Effect v4 Schema solves this.** Effect Schema can validate the response at runtime, catching shape mismatches immediately at the data-fetching boundary rather than deep in your components.
-
----
-
-## The Proposed Architecture: Codegen + Effect Schema + TanStack Query
-
-The three layers work together:
-
-```
-┌─────────────────────────────────────────────────────┐
-│  Compile-time (Codegen or gql.tada)                 │
-│  - Derives TS types from GraphQL schema             │
-│  - Provides type-safe graphql() tag                  │
-│  - Catches wrong fields/variables at build time      │
-├─────────────────────────────────────────────────────┤
-│  Runtime (Effect Schema)                             │
-│  - Validates actual JSON response from server        │
-│  - Catches shape mismatches at fetch boundary        │
-│  - Transforms/decodes custom scalars (Date, etc.)    │
-├─────────────────────────────────────────────────────┤
-│  Data fetching (TanStack Query)                      │
-│  - Caching, background refetch, suspense             │
-│  - queryOptions() for reusable typed queries         │
-│  - Already in our stack                              │
-└─────────────────────────────────────────────────────┘
-```
-
-### How the pieces connect
-
-**1. Define Effect Schemas for your domain types**
-
-```ts
-import { Schema } from "effect"
-
-const User = Schema.Struct({
-  id: Schema.String,
-  name: Schema.String,
-  email: Schema.String,
-  createdAt: Schema.Date, // runtime decode from string → Date
-})
-type User = Schema.Schema.Type<typeof User> // inferred: { id: string; name: string; email: string; createdAt: Date }
-
-const UserListResponse = Schema.Struct({
-  data: Schema.Struct({
-    users: Schema.Array(User),
-  }),
-  errors: Schema.optionalKey(Schema.Array(Schema.Struct({
-    message: Schema.String,
-  }))),
-})
-```
-
-**2. Codegen provides typed query documents**
-
-```ts
-// src/gql/ — generated by @graphql-codegen/client-preset
-import { graphql } from './gql'
-
-const UsersQuery = graphql(`
-  query GetUsers {
-    users { id name email createdAt }
+```graphql
+{
+  live_set {
+    is_playing
+    tracks {
+      name
+      clip_slots {
+        has_clip
+      }
+    }
   }
-`)
+}
 ```
 
-**3. execute function bridges Effect + TanStack Query**
+You POST this as JSON to the server:
+
+```json
+{
+  "query": "{ live_set { is_playing tracks { name clip_slots { has_clip } } } }"
+}
+```
+
+The server responds:
+
+```json
+{
+  "data": {
+    "live_set": {
+      "is_playing": true,
+      "tracks": [
+        { "name": "Drums", "clip_slots": [{ "has_clip": true }] }
+      ]
+    }
+  }
+}
+```
+
+**Key concepts:**
+- The query selects **fields** from **types** defined in the schema
+- Fields can take **arguments** like `track(index: 0)`
+- **Variables** parameterize queries (separate from the query string)
+- A **selection set** is the `{ field1 field2 nested { ... } }` part
+- The `data` envelope is the standard GraphQL response format
+
+For liveql, queries are simple because there's one root field: `live_set`. You select down from there.
+
+---
+
+## The Approach: Effect Schema Only (no codegen)
+
+### Why Effect Schema instead of codegen
+
+1. We already depend on Effect — no new dependency
+2. Effect Schemas give us **both** compile-time types AND runtime validation in one definition
+3. The liveql schema is small (10 types) — hand-writing or LLM-generating schemas is feasible
+4. We control the types that flow through the entire codebase
+5. No build step, no generated files, no watch process
+
+### How it works
+
+```ts
+// 1. Define schemas that match the GraphQL types
+const Note = Schema.Struct({
+  note_id: Schema.Number,
+  pitch: Schema.Number,
+  start_time: Schema.Number,
+  duration: Schema.Number,
+  velocity: Schema.Number,
+  mute: Schema.Boolean,
+  probability: Schema.Number,
+  velocity_deviation: Schema.Number,
+  release_velocity: Schema.Number,
+})
+
+// 2. TypeScript types flow from schemas automatically
+type Note = Schema.Schema.Type<typeof Note>
+// { readonly note_id: number; readonly pitch: number; ... }
+
+// 3. Define a schema for the response envelope
+const LiveSetResponse = Schema.Struct({
+  data: Schema.Struct({
+    live_set: Schema.Struct({
+      is_playing: Schema.Boolean,
+      tracks: Schema.Array(Schema.Struct({
+        name: Schema.String,
+        clip_slots: Schema.Array(Schema.Struct({
+          has_clip: Schema.Boolean,
+        })),
+      })),
+    }),
+  }),
+})
+
+// 4. Write a GraphQL query string (just a string)
+const query = `{
+  live_set {
+    is_playing
+    tracks {
+      name
+      clip_slots { has_clip }
+    }
+  }
+}`
+
+// 5. POST, validate, get typed data
+const data = yield* Effect.gen(function* () {
+  const client = yield* HttpClient.HttpClient
+  const response = yield* client.post("http://localhost:4000/graphql", {
+    headers: { "Content-Type": "application/json" },
+    body: HttpBody.jsonUnsafe({ query }),
+  })
+  const validated = yield* response.pipe(
+    HttpClientResponse.schemaBodyJson(LiveSetResponse)
+  )
+  return validated.data.live_set
+})
+// data is typed as { is_playing: boolean; tracks: Array<{ name: string; clip_slots: ... }> }
+// validated at runtime by Effect Schema
+```
+
+### The key insight
+
+Effect Schemas are **bidirectional**: they define the shape AND produce the TypeScript type. One definition, two benefits:
+
+| Definition | Compile-time | Runtime |
+|---|---|---|
+| `Schema.Struct({ pitch: Schema.Number })` | TS type: `{ pitch: number }` | Validates JSON has a numeric `pitch` field |
+
+Compare to codegen: the TS types come from codegen, but there's no runtime check. You trust the server blindly.
+
+### Schema generation from the server
+
+Since the liveql server runs GraphiQL at `http://localhost:4000`, we can introspect the schema. The SDL is already in the server source. An LLM can take the SDL and generate the Effect Schemas.
+
+Possible workflow:
+1. Copy the `typeDefs` from `liveql-n4m.js` (or run an introspection query)
+2. Feed to an LLM → get Effect Schema definitions
+3. Review and commit the schemas
+4. When the server schema changes, re-generate
+
+This is a one-time cost. The liveql schema is stable.
+
+---
+
+## Constructing Query Strings
+
+For liveql, queries are plain strings. The schema is shallow and the operations are straightforward. No builder library needed.
+
+### Query patterns
+
+**Basic query — read data:**
+```ts
+const isPlayingQuery = `{
+  live_set {
+    is_playing
+  }
+}`
+```
+
+**Nested query — traverse the object graph:**
+```ts
+const trackClipsQuery = `{
+  live_set {
+    tracks {
+      name
+      clip_slots {
+        has_clip
+        clip {
+          name
+          looping
+          notes {
+            pitch
+            start_time
+            duration
+            velocity
+          }
+        }
+      }
+    }
+  }
+}`
+```
+
+**Parameterized query — field arguments:**
+```ts
+const specificTrackQuery = `{
+  live_set {
+    track(index: 0) {
+      name
+      has_midi_input
+    }
+  }
+}`
+```
+
+**Mutation — write data:**
+```ts
+const startPlayingMutation = `mutation {
+  song_start_playing(id: 1) {
+    is_playing
+  }
+}`
+```
+
+**Mutation with variables:**
+```ts
+// Define the operation with variable placeholders
+const renameTrack = `mutation RenameTrack($id: Int!, $name: String!) {
+  track_set_name(id: $id, name: $name) {
+    id
+    name
+  }
+}`
+
+// Variables passed separately
+const variables = { id: 5, name: "Synth Lead" }
+```
+
+For liveql, most mutations can be written without variables since arguments are hardcoded in the query string. Variables are useful when the values come from user input.
+
+---
+
+## Full Integration: Effect Schema + TanStack Query
+
+### The execute helper
 
 ```ts
 import { Effect, Schema, Exit } from "effect"
-import { FetchHttpClient } from "effect/unstable/http"
-import type { TypedDocumentString } from './gql/graphql'
+import { HttpClient, HttpClientResponse, FetchHttpClient, HttpBody } from "effect/unstable/http"
 
-// Generic execute that validates response with Effect Schema
-function executeEffect<TResult, TVariables, TValidated>(
-  query: TypedDocumentString<TResult, TVariables>,
-  responseSchema: Schema.Codec<TValidated, unknown>,
-  ...[variables]: TVariables extends Record<string, never> ? [] : [TVariables]
-): Effect.Effect<TValidated, Schema.SchemaError | Error> {
+const ENDPOINT = "http://localhost:4000/graphql"
+
+interface GraphQLResponse<T> {
+  data: T
+  errors?: Array<{ message: string }>
+}
+
+function buildResponseSchema<T extends Schema.Schema.Any>(dataSchema: T) {
+  return Schema.Struct({
+    data: dataSchema,
+    errors: Schema.optionalKey(Schema.Array(Schema.Struct({
+      message: Schema.String,
+    }))),
+  })
+}
+
+// Core: execute a query string, validate with Effect Schema, return typed data
+function gqlEffect<T>(
+  query: string,
+  variables: Record<string, unknown> | undefined,
+  dataSchema: Schema.Codec<T, unknown>,
+): Effect.Effect<T, Schema.SchemaError | Error, HttpClient.HttpClient> {
   return Effect.gen(function* () {
     const client = yield* HttpClient.HttpClient
+    const response = yield* client.post(ENDPOINT, {
+      headers: { "Content-Type": "application/json" },
+      body: HttpBody.jsonUnsafe({ query, variables }),
+    })
 
-    const response = yield* client.post(
-      "http://localhost:4000/graphql",
-      {
-        headers: { "Content-Type": "application/json" },
-        body: HttpBody.jsonUnsafe({
-          query: query.toString(),
-          variables,
-        }),
-      }
-    )
-
-    // Validate the GraphQL envelope: { data: TResult, errors?: [...] }
+    const responseSchema = buildResponseSchema(dataSchema)
     const validated = yield* response.pipe(
       HttpClientResponse.schemaBodyJson(responseSchema)
     )
 
-    // Check for GraphQL-level errors
     if (validated.errors?.length) {
       yield* Effect.fail(new Error(validated.errors.map(e => e.message).join("; ")))
     }
@@ -140,393 +376,189 @@ function executeEffect<TResult, TVariables, TValidated>(
 }
 
 // Bridge to Promise for TanStack Query
-function gqlQuery<TResult, TVariables, TValidated>(
-  query: TypedDocumentString<TResult, TVariables>,
-  responseSchema: Schema.Codec<TValidated, unknown>,
-  variables?: TVariables
-): Promise<TValidated> {
+function gql<T>(
+  query: string,
+  dataSchema: Schema.Codec<T, unknown>,
+  variables?: Record<string, unknown>,
+): Promise<T> {
   return Effect.runPromise(
-    executeEffect(query, responseSchema, variables as any).pipe(
+    gqlEffect(query, variables, dataSchema).pipe(
       Effect.provide(FetchHttpClient.layer)
     )
   )
 }
 ```
 
-**4. Wire into TanStack Query with queryOptions**
-
-```ts
-import { queryOptions, useQuery } from "@tanstack/react-query"
-
-// Reusable, tagged, fully-typed query options
-const usersQueryOptions = queryOptions({
-  queryKey: ['users'] as const,
-  queryFn: () => gqlQuery(UsersQuery, UserListResponse),
-})
-
-function UserList() {
-  const { data } = useQuery(usersQueryOptions)
-  // data is TValidated (validated at runtime by Effect Schema)
-  // queryKey is DataTag<['users'], UserListData, Error>
-  return <ul>{data?.users.map(u => <li key={u.id}>{u.name}</li>)}</ul>
-}
-```
-
-### Why this architecture is strong
-
-| Concern | Solved by | How |
-|---|---|---|
-| Wrong fields in query | Codegen / gql.tada | Compile-time TS error |
-| Wrong variable types | Codegen / gql.tada | Compile-time TS error |
-| Server returns bad shape | Effect Schema | Runtime validation at fetch boundary |
-| Custom scalar decoding | Effect Schema | `Schema.Date`, `Schema.NumberFromString`, etc. |
-| GraphQL errors | execute function | Check `errors` array, fail Effect |
-| Caching/refetching | TanStack Query | `queryOptions`, `useQuery` |
-| Reusable query definitions | TanStack Query | `queryOptions()` + `DataTag` |
-| Service dependencies | Effect Layer | Provide `HttpClient`, auth tokens, etc. via Layer |
-
----
-
-## What Effect v4 Provides (from refs/effect4)
-
-### Schema (`effect`)
-
-Key primitives for defining response shapes:
+### Define schemas for the types you query
 
 ```ts
 import { Schema } from "effect"
 
-// Primitives
-Schema.String, Schema.Number, Schema.Boolean, Schema.Null, Schema.Date
-
-// Composites
-Schema.Struct({ name: Schema.String, age: Schema.Number })
-Schema.Array(Schema.String)
-Schema.Record({ key: Schema.String, value: Schema.Number })
-Schema.Tuple(Schema.String, Schema.Number)
-Schema.Union([Schema.String, Schema.Number])
-Schema.TaggedUnion({ Circle: { radius: Schema.Number }, Square: { side: Schema.Number } })
-
-// Recursive (for nested GraphQL types like comments on comments)
-const Comment = Schema.Struct({
-  id: Schema.String,
-  text: Schema.String,
-  replies: Schema.Array(Schema.suspend(() => Comment)),
+const Note = Schema.Struct({
+  note_id: Schema.Number,
+  pitch: Schema.Number,
+  start_time: Schema.Number,
+  duration: Schema.Number,
+  velocity: Schema.Number,
+  mute: Schema.Boolean,
+  probability: Schema.Number,
+  velocity_deviation: Schema.Number,
+  release_velocity: Schema.Number,
 })
 
-// Optional / nullable
-Schema.optionalKey(Schema.String)     // field?: string
-Schema.NullOr(Schema.String)          // string | null
-
-// Checks (runtime constraints, don't change TS type)
-Schema.String.check(Schema.isMinLength(1))
-Schema.Number.check(Schema.isGreaterThanOrEqualTo(0))
-
-// Decode at runtime
-Schema.decodeUnknownSync(schema)(unknownValue)       // throws SchemaError
-Schema.decodeUnknownEffect(schema)(unknownValue)     // Effect<A, SchemaError>
-Schema.decodeUnknownPromise(schema)(unknownValue)    // Promise<A>
-
-// Encode back
-Schema.encodeUnknownEffect(schema)(typedValue)       // Effect<unknown, SchemaError>
-
-// JSON-specific codec
-Schema.toCodecJson(schema)                           // Codec for JSON roundtripping
-```
-
-### HTTP Client (`effect/unstable/http`)
-
-```ts
-import { HttpClient, HttpClientRequest, HttpClientResponse, FetchHttpClient, HttpBody } from "effect/unstable/http"
-
-// Service-based: HttpClient is a ServiceMap.Service
-// Provides: get, post, put, patch, del, execute, etc.
-// Layer: FetchHttpClient.layer — browser-compatible fetch implementation
-
-// Schema-decode responses:
-HttpClientResponse.schemaJson(mySchema)        // decodes full response (status + headers + body)
-HttpClientResponse.schemaBodyJson(mySchema)    // decodes just the body
-
-// Composable:
-const authedClient = HttpClient.mapRequest(
-  HttpClientRequest.setHeader("Authorization", "Bearer token")
-)(httpClient)
-
-// Retry:
-const retried = HttpClient.retry(client, { times: 3 })
-
-// Filter status:
-HttpClient.filterStatusOk(response)  // Effect<..., HttpClientError>
-```
-
-### No GraphQL-specific code exists in Effect v4
-
-We build the GraphQL layer ourselves on top of HttpClient + Schema. This is fine — GraphQL over HTTP is simple: POST JSON with `{ query, variables }`, get back `{ data, errors }`.
-
-### The HttpApi pattern (reference, not directly usable for GraphQL)
-
-Effect has `HttpApi` / `HttpApiClient` / `HttpApiEndpoint` in `effect/unstable/httpapi` — a REST-style API definition pattern that auto-generates typed clients. This is NOT for GraphQL (it's REST-oriented with URL paths and status codes), but it's the design pattern we'd mirror for our GraphQL client. Key lesson: define the shape once with Schemas, get both server types and client validation from the same source.
-
----
-
-## TanStack Query v5.95 Details (from refs/tan-query)
-
-### queryOptions
-
-Identity function that exists for TypeScript inference. Adds a `DataTag` to `queryKey` so that `queryClient.getQueryData(key)` infers the data type automatically.
-
-```ts
-import { queryOptions, useQuery, useQueryClient } from '@tanstack/react-query'
-
-const usersOpts = queryOptions({
-  queryKey: ['users'] as const,
-  queryFn: fetchUsers, // returns Promise<User[]>
+const Clip = Schema.Struct({
+  id: Schema.Number,
+  name: Schema.String,
+  looping: Schema.Boolean,
+  length: Schema.Number,
+  is_midi_clip: Schema.Boolean,
+  notes: Schema.NullOr(Schema.Array(Note)),
 })
 
-// In a hook — types flow automatically
-const { data } = useQuery(usersOpts) // data: User[] | undefined
+const ClipSlot = Schema.Struct({
+  has_clip: Schema.Boolean,
+  clip: Schema.NullOr(Clip),
+})
 
-// In a loader or outside component — still typed!
-const client = useQueryClient()
-const users = client.getQueryData(usersOpts.queryKey) // User[] | undefined
+const Track = Schema.Struct({
+  id: Schema.Number,
+  name: Schema.String,
+  has_midi_input: Schema.Boolean,
+  clip_slots: Schema.Array(ClipSlot),
+})
 
-// Prefetch
-client.prefetchQuery(usersOpts)
-```
-
-### mutationOptions
-
-Same pattern for mutations:
-
-```ts
-const createUserMut = mutationOptions({
-  mutationKey: ['createUser'] as const,
-  mutationFn: (input: CreateUserInput) => gqlQuery(CreateUserMutation, UserSchema, input),
-  onSuccess: (user) => { /* user is typed */ },
+const Song = Schema.Struct({
+  is_playing: Schema.Boolean,
+  tracks: Schema.Array(Track),
 })
 ```
 
-### How useQuery types work
+### Wire into TanStack Query
 
 ```ts
-useQuery<TQueryFnData, TError, TData, TQueryKey>(options)
-```
+import { queryOptions, useQuery } from "@tanstack/react-query"
 
-- `TQueryFnData` — raw return type of `queryFn`
-- `TError` — error type (default: `Error`)
-- `TData` — final type after `select` transform (defaults to `TQueryFnData`)
-- `TQueryKey` — query key type
+// Reusable query options
+const songQueryOptions = queryOptions({
+  queryKey: ['live_set'] as const,
+  queryFn: () => gql(
+    `{
+      live_set {
+        is_playing
+        tracks {
+          id
+          name
+          has_midi_input
+          clip_slots {
+            has_clip
+            clip {
+              id
+              name
+              looping
+              length
+              is_midi_clip
+            }
+          }
+        }
+      }
+    }`,
+    Song
+  ),
+})
 
-Inference works when `queryFn` returns the right type. No explicit generics needed.
-
-### GraphQL in TanStack Query
-
-TanStack's official docs show the pattern: write a `queryFn` that calls your GraphQL client, return the `data` field. Types inferred from return type. The `queryOptions()` helper is the recommended way to define reusable queries.
-
----
-
-## Approach 1: Codegen Client Preset (recommended for compile-time)
-
-The Guild's current "official" approach. Generates `TypedDocumentString` types from your schema + operations.
-
-### config (`codegen.ts`)
-
-```ts
-import type { CodegenConfig } from '@graphql-codegen/cli'
-
-const config: CodegenConfig = {
-  schema: 'http://localhost:4000/graphql',
-  documents: ['src/**/*.{ts,tsx}'],
-  generates: {
-    './src/gql/': {
-      preset: 'client',
-      config: { documentMode: 'string' },
-    },
-  },
-}
-export default config
-```
-
-### Usage
-
-```ts
-import { graphql } from './gql'
-
-const UsersQuery = graphql(`
-  query GetUsers { users { id name email } }
-`)
-// UsersQuery is TypedDocumentString<GetUsersQuery, GetUsersQueryVariables>
-// TS knows the shape of data and variables
-```
-
-### Caveats
-
-- Requires a build step (`npx graphql-codegen` or watch mode)
-- Generated files need `.gitignore` or commit decision
-- Fragment masking enabled by default (use `getFragmentData()` to unwrap)
-
----
-
-## Approach 2: gql.tada (alternative for compile-time, no codegen)
-
-**The question: how the hell does it get types without codegen?**
-
-Answer: TypeScript template literal types. It's wild.
-
-### The mechanism (3 steps)
-
-**Step 1: Schema → TypeScript declaration file (once)**
-
-The `gql.tada/ts-plugin` (a TypeScript Language Service Plugin) reads your GraphQL schema (from a `.graphql` file, introspection JSON, or a live URL). It generates a single `graphql-env.d.ts` file that contains the entire schema introspection as a TypeScript type:
-
-```ts
-// graphql-env.d.ts (generated once by the TS plugin)
-declare const introspection: {
-  __schema: {
-    types: [
-      { kind: "OBJECT"; name: "Query"; fields: [{ name: "users"; type: { ... } }] },
-      { kind: "OBJECT"; name: "User"; fields: [{ name: "id"; type: { kind: "SCALAR"; name: "String" } }, ...] },
-      // ... entire schema
-    ]
-  }
-}
-
-declare module 'gql.tada' {
-  interface setupSchema {
-    introspection: typeof introspection;
-  }
+function SongView() {
+  const { data } = useQuery(songQueryOptions)
+  // data is typed as Schema.Schema.Type<typeof Song>
+  // validated at runtime against the actual server response
+  return <div>{data?.is_playing ? "Playing" : "Stopped"}</div>
 }
 ```
 
-This is the ONLY "generated" file. It's a `.d.ts` — purely types, zero runtime code.
-
-**Step 2: TypeScript parses the query string at the TYPE LEVEL (every keystroke)**
-
-The `graphql()` function's return type is defined with incredibly complex recursive template literal types. When you write:
+### Mutations
 
 ```ts
-const query = graphql(`
-  query GetUser($id: ID!) {
-    user(id: $id) { id name email }
-  }
-`)
+import { useMutation, useQueryClient } from "@tanstack/react-query"
+
+function TrackNameEditor({ trackId }: { trackId: number }) {
+  const queryClient = useQueryClient()
+
+  const rename = useMutation({
+    mutationFn: (name: string) => gql(
+      `mutation {
+        track_set_name(id: ${trackId}, name: "${name}") {
+          id
+          name
+        }
+      }`,
+      Schema.Struct({ track_set_name: Schema.Struct({ id: Schema.Number, name: Schema.String }) })
+    ),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['live_set'] }),
+  })
+
+  return <input onBlur={(e) => rename.mutate(e.target.value)} />
+}
 ```
-
-TypeScript's type system **parses that string literal character by character** using recursive conditional types. It:
-1. Identifies it's a `query` (not mutation/subscription)
-2. Extracts the operation name `GetUser`
-3. Finds the variable `$id: ID!`
-4. Walks the selection set: `user(id: $id)` → looks up `user` field on `Query` type in the introspection → finds it returns `User` type → `id` → `String`, `name` → `String`, `email` → `String`
-5. Produces a type like `TypedDocumentNode<{ user: { id: string; name: string; email: string } }, { id: string }>`
-
-This is all happening at compile time. The TypeScript compiler is literally running a GraphQL query parser in its type system.
-
-**Step 3: Runtime is just a string**
-
-At runtime, `graphql()` returns the string you passed in (wrapped in a `TypedDocumentNode` object). No parsing, no validation, no codegen. The types are gone — they only existed at compile time.
-
-### What this means
-
-- **Compile time:** TypeScript knows the exact shape of `data` and `variables`. Wrong fields → TS error. Missing variables → TS error.
-- **Runtime:** The string is sent to the server as-is. Whatever comes back is trusted blindly. TypeScript types evaporate completely.
-
-**Same fundamental limitation as codegen: no runtime validation.**
-
-### Pros
-
-- Zero build step for types — they appear as you type in the editor
-- Fast feedback loop — TS errors on wrong fields instantly
-- ~538K weekly downloads, growing fast
-- No generated files to manage (except the one `.d.ts`)
-
-### Cons
-
-- Requires TS 5.0+ (we have 5.8 — fine)
-- Schema must be in a `.graphql` file locally or URL (but plugin handles URL)
-- Queries must be inline TS strings, not `.graphql` files
-- The type-level parser is extremely complex — TS performance can degrade on large schemas/queries
-- Smaller community than codegen
-- Not maintained by The Guild (so Yoga interop is not guaranteed)
-- **Same as codegen: NO runtime validation** — types are a promise, not a guarantee
 
 ---
 
-## Codegen vs gql.tada: head-to-head
+## The Schema ↔ Query Relationship
 
-Both give you **the same thing**: TypeScript types derived from your GraphQL schema at compile time. Neither validates runtime data.
+You don't need a schema for every possible query. You define schemas for the **response shapes you actually use**. Different queries against the same GraphQL type can return different subsets of fields — each gets its own Effect Schema.
 
-| | Codegen (client-preset) | gql.tada |
-|---|---|---|
-| **How types work** | Build step runs introspection → generates TS types per operation | TS plugin introspects schema once → template literal types parse query strings at type level |
-| **Build step** | Yes (`npx graphql-codegen --watch`) | No (TS plugin runs in editor + one `.d.ts` output) |
-| **Generated files** | `src/gql/` directory with per-operation types | Single `graphql-env.d.ts` (schema introspection only) |
-| **Query syntax** | `graphql()` tag with string literals (same!) | `graphql()` tag with string literals (same!) |
-| **Schema source** | URL or `.graphql` file | URL, `.graphql`, or `.json` introspection |
-| **Runtime validation** | None | None |
-| **TS performance** | Fast (types are pre-generated) | Can slow down on large schemas (recursive template literal parsing) |
-| **Ecosystem** | The Guild, 3.8M+ weekly downloads, v5 roadmap | urql team, 538K weekly downloads, v1.9 |
-| **Fragment masking** | Built-in (opt-out possible) | Built-in (opt-out possible) |
-| **Custom scalars** | Config in `codegen.ts` | Config in `initGraphQLTada<>()` |
-| **Error on wrong field** | TS error in generated code | TS error directly in editor |
+```ts
+// Query 1: just names
+const TracksNamesResponse = Schema.Struct({
+  is_playing: Schema.Boolean,
+  tracks: Schema.Array(Schema.Struct({
+    name: Schema.String,
+  })),
+})
 
-**Bottom line:** They're mechanically different but functionally equivalent for our purposes. Both produce `TypedDocumentNode` objects. Both integrate with the same `execute` function and TanStack Query. The question is just DX preference: do you want a watch process running, or do you want the TS compiler to do more work?
+// Query 2: full detail
+const TracksDetailResponse = Schema.Struct({
+  is_playing: Schema.Boolean,
+  tracks: Schema.Array(Schema.Struct({
+    id: Schema.Number,
+    name: Schema.String,
+    has_midi_input: Schema.Boolean,
+    clip_slots: Schema.Array(Schema.Struct({
+      has_clip: Schema.Boolean,
+      clip: Schema.NullOr(Clip),
+    })),
+  })),
+})
+```
+
+This is intentional — GraphQL's whole point is you select only the fields you need. The Effect Schema should match the shape of what you asked for.
 
 ---
 
-## Approach 3–5: Other Clients (rejected)
+## What's NOT in this approach
 
-| Client | Verdict |
-|---|---|
-| graphql-request / Graffle | v7 stable but redundant with our `execute` fn. v8 pre-release, not ready. |
-| Apollo Client | Overkill — normalized cache duplicates TanStack Query's role. ~40KB gzipped. |
-| urql | Lighter than Apollo but still a second data-fetching layer we don't need. |
-
----
-
-## Recommendation
-
-**Codegen Client Preset (compile-time) + Effect Schema (runtime) + TanStack Query (data fetching)**
-
-```
-npm i -D @graphql-codegen/cli @graphql-codegen/client-preset
-```
-
-Then:
-
-1. Define Effect Schemas for the GraphQL response shapes you care about
-2. Write a `gqlQuery` helper that POSTs to the Yoga server and validates with Effect Schema
-3. Wrap in `queryOptions()` for TanStack Query integration
-4. Use `useQuery(opts)` in components
-
-**gql.tada** is a viable alternative to codegen for the compile-time layer. If we want to avoid the codegen build step, we could use gql.tada instead — the Effect Schema + TanStack Query layers stay the same either way.
-
-The key insight: **codegen/gql.tada and Effect Schema are complementary, not competing**. One gives you compile-time types from the schema. The other validates the runtime wire data. Together you get both.
+- **No codegen** — no `@graphql-codegen/cli`, no generated files, no watch process
+- **No gql.tada** — no template literal type parsing
+- **No graphql-request / Graffle** — Effect's HttpClient handles HTTP
+- **No Apollo / urql** — TanStack Query handles caching
+- **No query builder** — plain strings, the schema is small enough
 
 ---
 
 ## Open Questions
 
-1. **Schema source:** Do we have a URL to introspect, or will someone give us a `.graphql` schema file?
-2. **Codegen vs gql.tada:** Prefer codegen (The Guild, more mature) or gql.tada (no build step)?
-3. **Watch mode:** Do we want `npx graphql-codegen --watch` during development, or run it on-demand?
-4. **Generated files:** Commit to repo or `.gitignore` and regenerate in CI?
-5. **Fragment masking:** Enable (stricter, more composable) or disable (simpler)?
-6. **Persisted operations:** Do we want persisted documents for production security/performance?
-7. **Custom scalars:** Does the server use custom scalars (Date, JSON, etc.) that need mapping?
-8. **Effect Layer for HttpClient:** Should we use `FetchHttpClient.layer` directly, or create a custom Layer that adds auth headers, base URL, etc.?
-9. **GraphQL error handling:** How should we handle partial data responses (`data` + `errors` simultaneously)?
-10. **Do we even need runtime validation?** If the Yoga server is ours and well-tested, maybe the compile-time types from codegen are enough and we skip the Effect Schema layer. The tradeoff: less code vs. catching server bugs at the fetch boundary.
-11. **Dual type problem:** If we use BOTH codegen types AND Effect Schema types, we have two representations of the same data. We need to decide: do we use the codegen types everywhere (and Effect Schema just for validation), or do we use Effect Schema types everywhere (and codegen just for query construction)?
+1. **Schema generation:** Do we want to hand-write the Effect Schemas, or use an LLM to generate them from the liveql SDL? Hand-writing is ~10 types, very manageable.
+2. **Shared schemas vs per-query schemas:** Do we define one `Track` schema and use it everywhere, or one per query? (See "Schema ↔ Query Relationship" above — per-query is more accurate but more verbose.)
+3. **Variables:** Most liveql queries use hardcoded arguments. Do we need variable support now, or can we add it later?
+4. **Error handling:** How should we handle GraphQL partial responses (`data` + `errors` simultaneously)?
+5. **Effect Layer for HttpClient:** Should we create a custom Layer that adds auth headers / base URL, or just use `FetchHttpClient.layer` directly?
+6. **Schema drift:** When the server schema changes, how do we know our Effect Schemas are out of date? (Runtime validation catches this — but silently, unless we log.)
+7. **Introspection in dev:** Should we auto-introspect the schema on startup and diff against our Effect Schemas?
 
 ---
 
 ## References
 
-- [GraphQL Code Generator — Client Preset](https://the-guild.dev/graphql/codegen/plugins/presets/preset-client)
-- [Codegen + React Query guide](https://the-guild.dev/graphql/codegen/docs/guides/react-query)
-- [gql.tada](https://gql-tada.0no.co/)
-- [Graffle (graphql-request successor)](https://graffle.js.org/)
-- [TanStack Query GraphQL docs](https://tanstack.com/query/latest/docs/framework/react/graphql)
-- [GraphQL Yoga](https://the-guild.dev/graphql/yoga-server)
+- [liveql repo](https://github.com/mw10013/liveql) — the GraphQL Yoga server
+- [GraphQL over HTTP spec](https://graphql.github.io/graphql-over-http/draft/) — how queries are sent/received
+- [GraphQL introspection](https://graphql.org/learn/introspection/) — how to query the schema itself
 - Effect v4 refs: `refs/effect4/packages/effect/src/Schema.ts`, `refs/effect4/packages/effect/src/unstable/http/`
 - TanStack Query refs: `refs/tan-query/packages/react-query/src/queryOptions.ts`
