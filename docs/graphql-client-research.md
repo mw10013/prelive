@@ -255,3 +255,142 @@ type Mutation {
 }
 ```
 </details>
+
+---
+
+## Implementation Plan
+
+### File Structure
+
+```
+src/lib/
+  gql.ts          — GraphQL client (Effect service + gql helper)
+  Domain.ts       — Effect Schemas for liveql types
+src/routes/
+  index.tsx       — test queries rendered in cards
+```
+
+### Step 1: Base Schemas (`src/lib/schemas.ts`)
+
+One `Schema.Struct` per GraphQL object type, scalar fields only. Float fields → `Schema.Number`.
+
+```ts
+import { Schema } from "effect"
+
+const Song = Schema.Struct({
+  id: Schema.Number, path: Schema.String, is_playing: Schema.Boolean,
+})
+const SongView = Schema.Struct({
+  id: Schema.Number, path: Schema.String,
+})
+const Track = Schema.Struct({
+  id: Schema.Number, path: Schema.String, has_midi_input: Schema.Boolean, name: Schema.String,
+})
+const ClipSlot = Schema.Struct({
+  id: Schema.Number, path: Schema.String, has_clip: Schema.Boolean,
+})
+const Clip = Schema.Struct({
+  id: Schema.Number, path: Schema.String, end_time: Schema.Number,
+  is_arrangement_clip: Schema.Boolean, is_midi_clip: Schema.Boolean,
+  length: Schema.Number, looping: Schema.Boolean, name: Schema.String,
+  signature_denominator: Schema.Number, signature_numerator: Schema.Number, start_time: Schema.Number,
+})
+const Note = Schema.Struct({
+  note_id: Schema.Number, pitch: Schema.Number, start_time: Schema.Number,
+  duration: Schema.Number, velocity: Schema.Number, mute: Schema.Boolean,
+  probability: Schema.Number, velocity_deviation: Schema.Number, release_velocity: Schema.Number,
+})
+```
+
+Composed schemas built per-query from base fields (e.g. `SongOverview` from the research section above).
+
+### Step 2: GraphQL Client (`src/lib/gql.ts`)
+
+Use Effect 4 `HttpClient` + `HttpClientRequest` idioms. POST the GraphQL envelope, check for `errors`, decode `data` with the caller's schema.
+
+```ts
+import { Effect, Schema } from "effect"
+import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
+
+const ENDPOINT = "http://localhost:4000/graphql"
+
+const GqlEnvelope = Schema.Struct({
+  data: Schema.UndefinedOr(Schema.Unknown),
+  errors: Schema.optionalKey(Schema.Array(Schema.Struct({ message: Schema.String }))),
+})
+
+function gqlEffect<T>(
+  query: string,
+  dataSchema: Schema.Schema<T>,
+  variables?: Record<string, unknown>,
+): Effect.Effect<T, Error | Schema.SchemaError, HttpClient.HttpClient> {
+  return Effect.gen(function* () {
+    const client = yield* HttpClient.HttpClient
+    const response = yield* HttpClientRequest.post(ENDPOINT).pipe(
+      HttpClientRequest.bodyJsonUnsafe({ query, variables }),
+      client.execute,
+    )
+    const envelope = yield* HttpClientResponse.schemaBodyJson(GqlEnvelope)(response)
+    if (envelope.errors?.length) {
+      yield* Effect.fail(new Error(envelope.errors.map((e) => e.message).join("; ")))
+    }
+    return yield* Schema.decodeUnknownEffect(dataSchema)(envelope.data)
+  })
+}
+
+function gql<T>(
+  query: string,
+  dataSchema: Schema.Schema<T>,
+  variables?: Record<string, unknown>,
+): Promise<T> {
+  return gqlEffect(query, dataSchema, variables).pipe(
+    Effect.provide(FetchHttpClient.layer),
+    Effect.runPromise,
+  )
+}
+```
+
+Key patterns from Effect 4:
+- `HttpClientRequest.post(url).pipe(HttpClientRequest.bodyJsonUnsafe(body), client.execute)` — idiomatic request building
+- `HttpClientResponse.schemaBodyJson(schema)(response)` — decode JSON body with schema
+- `Schema.decodeUnknownEffect(schema)(data)` — validate the inner `data` field
+- `Effect.provide(FetchHttpClient.layer)` — provide HTTP implementation at the edge
+
+### Step 3: Test Queries in Index Route (`src/routes/index.tsx`)
+
+Replace the skeleton with a few live queries to validate the full stack. Use TanStack Query `queryOptions` + `useQuery` — no loader (queries hit liveql client-side).
+
+**Query 1 — Song status:** `{ live_set { id is_playing } }`
+**Query 2 — Track list:** `{ live_set { tracks { id name has_midi_input } } }`
+**Query 3 — Full overview:** `{ live_set { id is_playing tracks { id name clip_slots { id has_clip clip { id name looping } } } } }`
+
+```ts
+const songStatusOptions = queryOptions({
+  queryKey: ["live_set", "status"],
+  queryFn: () => gql(
+    `{ live_set { id is_playing } }`,
+    Schema.Struct({ live_set: Schema.Struct({ id: Schema.Number, is_playing: Schema.Boolean }) }),
+  ),
+})
+
+const trackListOptions = queryOptions({
+  queryKey: ["live_set", "tracks"],
+  queryFn: () => gql(
+    `{ live_set { tracks { id name has_midi_input } } }`,
+    Schema.Struct({
+      live_set: Schema.Struct({
+        tracks: Schema.Array(Schema.Struct({ id: Schema.Number, name: Schema.String, has_midi_input: Schema.Boolean })),
+      }),
+    }),
+  ),
+})
+```
+
+Render each query result in a `Card`. Show loading/error states via `useQuery` status. Display raw JSON with `<pre>` for quick validation.
+
+### Step 4: Verify
+
+1. `pnpm dev` — start prelive on :4500
+2. Start liveql on :4000 (Ableton Live must be open)
+3. Open `http://localhost:4500` — confirm all three cards populate with live data
+4. `pnpm typecheck && pnpm lint` — no errors
