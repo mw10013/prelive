@@ -11,6 +11,7 @@
     "lint": "oxlint",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
+    "clean": "rm -rf node_modules .tanstack",
     "refs:tan-form": "rm -rf refs/tan-form && mkdir -p refs/tan-form && curl -L https://github.com/TanStack/form/archive/refs/tags/@tanstack/react-form@1.28.5.tar.gz | tar -xz -C refs/tan-form --strip-components=1",
     "refs:tan-router": "rm -rf refs/tan-router && mkdir -p refs/tan-router && curl -L https://github.com/TanStack/router/archive/refs/tags/release-2026-03-22-0931.tar.gz | tar -xz -C refs/tan-router --strip-components=1",
     "refs:tan-query": "rm -rf refs/tan-query && mkdir -p refs/tan-query && curl -sL https://github.com/TanStack/query/archive/refs/tags/@tanstack/react-query@5.95.0.tar.gz | tar -xzC refs/tan-query --strip-components=1",
