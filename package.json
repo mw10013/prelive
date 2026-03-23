@@ -16,12 +16,12 @@
     "refs:tan-router": "rm -rf refs/tan-router && mkdir -p refs/tan-router && curl -L https://github.com/TanStack/router/archive/refs/tags/release-2026-03-22-0931.tar.gz | tar -xz -C refs/tan-router --strip-components=1",
     "refs:tan-query": "rm -rf refs/tan-query && mkdir -p refs/tan-query && curl -sL https://github.com/TanStack/query/archive/refs/tags/@tanstack/react-query@5.95.0.tar.gz | tar -xzC refs/tan-query --strip-components=1",
     "refs:tan-start": "rm -rf refs/tan-start && mkdir -p refs/tan-start && curl -L https://github.com/TanStack/router/archive/refs/tags/release-2026-03-22-0931.tar.gz | tar -xz -C refs/tan-start --strip-components=1",
-    "refs:effect4": "rm -rf refs/effect4 && mkdir -p refs/effect4 && curl -L https://github.com/Effect-TS/effect-smol/archive/refs/tags/effect@4.0.0-beta.36.tar.gz | tar -xz -C refs/effect4 --strip-components=1",
+    "refs:effect4": "rm -rf refs/effect4 && mkdir -p refs/effect4 && curl -L https://github.com/Effect-TS/effect-smol/archive/refs/tags/effect@4.0.0-beta.38.tar.gz | tar -xz -C refs/effect4 --strip-components=1",
     "refs:shadcn": "rm -rf refs/shadcn && mkdir -p refs/shadcn && curl -L https://github.com/shadcn-ui/ui/archive/refs/tags/shadcn@3.8.5.tar.gz | tar -xz -C refs/shadcn --strip-components=1"
   },
   "dependencies": {
     "@base-ui/react": "1.2.0",
-    "@effect/platform-node": "4.0.0-beta.36",
+    "@effect/platform-node": "4.0.0-beta.38",
     "@fontsource-variable/inter": "^5.2.8",
     "@tanstack/react-query": "5.95.0",
     "@tanstack/react-router": "1.168.2",
@@ -31,7 +31,7 @@
     "@tanstack/router-plugin": "1.167.3",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
-    "effect": "4.0.0-beta.36",
+    "effect": "4.0.0-beta.38",
     "lucide-react": "0.562.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
