@@ -1,0 +1,11 @@
+.env
+stash.noindex
+node_modules
+.DS_Store
+
+dist/
+.tanstack/
+refs/
+logs/
+todo.md
+.playwright-cli/
