@@ -1,6 +1,6 @@
 import { Schema } from "effect"
 
-const ENDPOINT = "http://localhost:4000"
+const ENDPOINT = "http://localhost:4000/graphql"
 
 interface GqlResponse {
   data?: unknown
