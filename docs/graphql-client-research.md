@@ -546,12 +546,36 @@ This is intentional — GraphQL's whole point is you select only the fields you 
 ## Open Questions
 
 1. **Schema generation:** Do we want to hand-write the Effect Schemas, or use an LLM to generate them from the liveql SDL? Hand-writing is ~10 types, very manageable.
+
+We would want the llm to generate. but that's just the developer prompting.
+
 2. **Shared schemas vs per-query schemas:** Do we define one `Track` schema and use it everywhere, or one per query? (See "Schema ↔ Query Relationship" above — per-query is more accurate but more verbose.)
+
+I think we want to have schemas for each object type containing all the scalar fields. For instance, Song would have id, path, is_playing, but not view, track, or tracks.
+
+We might build on that with SongWithTracks that includes nested tracks, but not right away.
+
+As a general pattern, the queries themselves should always get all the scalar fields. We are fussed about optimization at this point.
+
 3. **Variables:** Most liveql queries use hardcoded arguments. Do we need variable support now, or can we add it later?
+
+I think we can wait.
+
 4. **Error handling:** How should we handle GraphQL partial responses (`data` + `errors` simultaneously)?
+
+I need more research on this since I don't understand what you mean. Provide examples, maybe mermaid diagram. make recommendation.
+
 5. **Effect Layer for HttpClient:** Should we create a custom Layer that adds auth headers / base URL, or just use `FetchHttpClient.layer` directly?
+
+No auth is involved so keep it simple.
+
 6. **Schema drift:** When the server schema changes, how do we know our Effect Schemas are out of date? (Runtime validation catches this — but silently, unless we log.)
+
+Runtime validation will error. That's all we have with regard to drift.
+
 7. **Introspection in dev:** Should we auto-introspect the schema on startup and diff against our Effect Schemas?
+
+No
 
 ---
 
