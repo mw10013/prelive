@@ -20,7 +20,10 @@ Downloaded source code of libraries are in `refs/` for reference.
 - **TanStack Router**: `refs/tan-router/docs/` (MDX files - router/framework/react)
 - **TanStack Query**: `refs/tan-query/docs/` (Markdown files - framework/react, reference, eslint)
 - **TanStack Form**: `refs/tan-form/docs/` (Markdown files)
+- **TanStack Table**: `refs/tan-table/` (docs/, packages/)
 - **Shadcn UI**: `refs/shadcn/apps/v4/content/docs/` (MDX files)
+- **liveql**: `refs/liveql/` — GraphQL API for Ableton Live via Max for Live
+  - GraphQL schema defined as `typeDefs` template literal in `refs/liveql/liveql-n4m.js:92` (types: `Song`, `SongView`, `Track`, `ClipSlot`, `Clip`, `Note`, `NotesDictionary` + input types, single `Query.live_set`, mutations for playback/clips/notes)
 - **Base UI**: `refs/base-ui/docs/src/app/(docs)/(content)/react/` (MDX files in subdirs)
 - **Effect v4 Docs**: `refs/effect4/ai-docs/src/`
 
