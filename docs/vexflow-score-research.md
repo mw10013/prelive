@@ -13,6 +13,7 @@ Companion to: `lilypond-score-research.md`
 VexFlow is a **pure TypeScript/JavaScript** library that renders music notation to SVG or Canvas. No server dependency. v5.0.0 released March 2025.
 
 Two APIs:
+
 - **Low-level**: `Stave` + `StaveNote` + `Voice` + `Formatter` — build everything imperatively
 - **High-level**: `Factory` + `EasyScore` — string-based note entry, recommended starting point
 
@@ -40,29 +41,33 @@ Factory
 ### 1. Factory + EasyScore (string-based)
 
 ```ts
-import { VexFlow } from "vexflow"
+import { VexFlow } from "vexflow";
 
-VexFlow.loadFonts('Bravura', 'Academico').then(() => {
-  VexFlow.setFonts('Bravura', 'Academico')
+VexFlow.loadFonts("Bravura", "Academico").then(() => {
+  VexFlow.setFonts("Bravura", "Academico");
 
   const factory = new VexFlow.Factory({
-    renderer: { elementId: 'output', width: 800, height: 200 },
-  })
-  const score = factory.EasyScore()
-  const system = factory.System()
+    renderer: { elementId: "output", width: 800, height: 200 },
+  });
+  const score = factory.EasyScore();
+  const system = factory.System();
 
-  system.addStave({
-    voices: [
-      score.voice(score.notes('C#5/q, B4, A4, G#4', { stem: 'up' })),
-      score.voice(score.notes('C#4/h, C#4', { stem: 'down' })),
-    ],
-  }).addClef('treble').addTimeSignature('4/4')
+  system
+    .addStave({
+      voices: [
+        score.voice(score.notes("C#5/q, B4, A4, G#4", { stem: "up" })),
+        score.voice(score.notes("C#4/h, C#4", { stem: "down" })),
+      ],
+    })
+    .addClef("treble")
+    .addTimeSignature("4/4");
 
-  factory.draw()
-})
+  factory.draw();
+});
 ```
 
 EasyScore string format: `NoteNameOctave/duration, ...`
+
 - `C#5/q` = C# in octave 5, quarter note
 - `B4` = B in octave 4, same duration as previous
 - `(C4 E4 G4)/q` = C major chord, quarter note
@@ -74,28 +79,28 @@ EasyScore string format: `NoteNameOctave/duration, ...`
 ### 2. Low-level (StaveNote directly)
 
 ```ts
-import { VexFlow, Stave, StaveNote, Voice, Formatter } from "vexflow"
+import { VexFlow, Stave, StaveNote, Voice, Formatter } from "vexflow";
 
-const renderer = new VexFlow.Renderer(div, VexFlow.Renderer.Backends.SVG)
-renderer.resize(800, 200)
-const ctx = renderer.getContext()
+const renderer = new VexFlow.Renderer(div, VexFlow.Renderer.Backends.SVG);
+renderer.resize(800, 200);
+const ctx = renderer.getContext();
 
-const stave = new Stave(10, 40, 400)
-stave.addClef('treble').addTimeSignature('4/4')
-stave.setContext(ctx).draw()
+const stave = new Stave(10, 40, 400);
+stave.addClef("treble").addTimeSignature("4/4");
+stave.setContext(ctx).draw();
 
 const notes = [
-  new StaveNote({ keys: ['c/5'], duration: 'q' }),
-  new StaveNote({ keys: ['d/4'], duration: 'q' }),
-  new StaveNote({ keys: ['b/4'], duration: 'qr' }),
-  new StaveNote({ keys: ['c/4', 'e/4', 'g/4'], duration: 'q' }),
-]
+  new StaveNote({ keys: ["c/5"], duration: "q" }),
+  new StaveNote({ keys: ["d/4"], duration: "q" }),
+  new StaveNote({ keys: ["b/4"], duration: "qr" }),
+  new StaveNote({ keys: ["c/4", "e/4", "g/4"], duration: "q" }),
+];
 
-const voice = new Voice({ num_beats: 4, beat_value: 4 })
-voice.addTickables(notes)
+const voice = new Voice({ num_beats: 4, beat_value: 4 });
+voice.addTickables(notes);
 
-new Formatter().joinVoices([voice]).format([voice], 350)
-voice.draw(ctx, stave)
+new Formatter().joinVoices([voice]).format([voice], 350);
+voice.draw(ctx, stave);
 ```
 
 **Pro**: Full control, type-safe. **Con**: More verbose.
@@ -104,22 +109,22 @@ voice.draw(ctx, stave)
 
 ## VexFlow Duration Codes
 
-| Code | Duration | Beats (4/4) |
-|------|----------|-------------|
-| `w` | whole | 4 |
-| `h` | half | 2 |
-| `q` | quarter | 1 |
-| `8` | eighth | 0.5 |
-| `16` | sixteenth | 0.25 |
-| `32` | thirty-second | 0.125 |
-| `64` | sixty-fourth | 0.0625 |
-| `qd` | dotted quarter | 1.5 |
-| `hd` | dotted half | 3 |
-| `8d` | dotted eighth | 0.75 |
-| `wd` | dotted whole | 6 |
-| `hr` | half rest | |
-| `qr` | quarter rest | |
-| `8r` | eighth rest | |
+| Code | Duration       | Beats (4/4) |
+| ---- | -------------- | ----------- |
+| `w`  | whole          | 4           |
+| `h`  | half           | 2           |
+| `q`  | quarter        | 1           |
+| `8`  | eighth         | 0.5         |
+| `16` | sixteenth      | 0.25        |
+| `32` | thirty-second  | 0.125       |
+| `64` | sixty-fourth   | 0.0625      |
+| `qd` | dotted quarter | 1.5         |
+| `hd` | dotted half    | 3           |
+| `8d` | dotted eighth  | 0.75        |
+| `wd` | dotted whole   | 6           |
+| `hr` | half rest      |             |
+| `qr` | quarter rest   |             |
+| `8r` | eighth rest    |             |
 
 Append `d` for dotted. Append `r` for rest.
 
@@ -129,21 +134,21 @@ Append `d` for dotted. Append `r` for rest.
 
 Format: `noteName/octave`
 
-| Our pitch | Note | VexFlow key | VexFlow EasyScore |
-|-----------|------|-------------|-------------------|
-| 60 | C4 (middle C) | `c/4` | `C4` |
-| 61 | C#4 | `c#/4` | `C#4` |
-| 62 | D4 | `d/4` | `D4` |
-| 63 | Eb4 | `eb/4` | `Eb4` |
-| 64 | E4 | `e/4` | `E4` |
-| 65 | F4 | `f/4` | `F4` |
-| 66 | F#4 | `f#/4` | `F#4` |
-| 67 | G4 | `g/4` | `G4` |
-| 68 | G#4 | `g#/4` | `G#4` |
-| 69 | A4 | `a/4` | `A4` |
-| 70 | Bb4 | `bb/4` | `Bb4` |
-| 71 | B4 | `b/4` | `B4` |
-| 72 | C5 | `c/5` | `C5` |
+| Our pitch | Note          | VexFlow key | VexFlow EasyScore |
+| --------- | ------------- | ----------- | ----------------- |
+| 60        | C4 (middle C) | `c/4`       | `C4`              |
+| 61        | C#4           | `c#/4`      | `C#4`             |
+| 62        | D4            | `d/4`       | `D4`              |
+| 63        | Eb4           | `eb/4`      | `Eb4`             |
+| 64        | E4            | `e/4`       | `E4`              |
+| 65        | F4            | `f/4`       | `F4`              |
+| 66        | F#4           | `f#/4`      | `F#4`             |
+| 67        | G4            | `g/4`       | `G4`              |
+| 68        | G#4           | `g#/4`      | `G#4`             |
+| 69        | A4            | `a/4`       | `A4`              |
+| 70        | Bb4           | `bb/4`      | `Bb4`             |
+| 71        | B4            | `b/4`       | `B4`              |
+| 72        | C5            | `c/5`       | `C5`              |
 
 ---
 
@@ -152,14 +157,27 @@ Format: `noteName/octave`
 ### Step 1: MIDI pitch → VexFlow key
 
 ```ts
-const SHARPS = ['c', 'c#', 'd', 'd#', 'e', 'f', 'f#', 'g', 'g#', 'a', 'a#', 'b']
-const FLATS  = ['c', 'db', 'd', 'eb', 'e', 'f', 'gb', 'g', 'ab', 'a', 'bb', 'b']
+const SHARPS = [
+  "c",
+  "c#",
+  "d",
+  "d#",
+  "e",
+  "f",
+  "f#",
+  "g",
+  "g#",
+  "a",
+  "a#",
+  "b",
+];
+const FLATS = ["c", "db", "d", "eb", "e", "f", "gb", "g", "ab", "a", "bb", "b"];
 
 function midiToVexFlowKey(pitch: number, useFlats = false): string {
-  const names = useFlats ? FLATS : SHARPS
-  const octave = Math.floor(pitch / 12) - 1
-  const name = names[pitch % 12]
-  return `${name}/${octave}`
+  const names = useFlats ? FLATS : SHARPS;
+  const octave = Math.floor(pitch / 12) - 1;
+  const name = names[pitch % 12];
+  return `${name}/${octave}`;
 }
 ```
 
@@ -170,28 +188,32 @@ function beatsToDuration(beats: number): string {
   // Map beat lengths to VexFlow duration codes
   // Exact matches first
   const map: [number, string][] = [
-    [4,    'w'],
-    [3,    'hd'],   // dotted half
-    [2,    'h'],
-    [1.5,  'qd'],   // dotted quarter
-    [1,    'q'],
-    [0.75, '8d'],   // dotted eighth
-    [0.5,  '8'],
-    [0.25, '16'],
-    [0.125,'32'],
-  ]
+    [4, "w"],
+    [3, "hd"], // dotted half
+    [2, "h"],
+    [1.5, "qd"], // dotted quarter
+    [1, "q"],
+    [0.75, "8d"], // dotted eighth
+    [0.5, "8"],
+    [0.25, "16"],
+    [0.125, "32"],
+  ];
   // Find closest match (quantize)
-  let best = 'q'
-  let bestDiff = Infinity
+  let best = "q";
+  let bestDiff = Infinity;
   for (const [len, code] of map) {
-    const diff = Math.abs(beats - len)
-    if (diff < bestDiff) { bestDiff = diff; best = code }
+    const diff = Math.abs(beats - len);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = code;
+    }
   }
-  return best
+  return best;
 }
 ```
 
 **Problem**: Not all durations quantize cleanly. A note of 0.33 beats (triplet eighth) doesn't map to any standard duration. Options:
+
 1. Quantize to nearest (lose precision in visual representation)
 2. Use tuplets (complex — VexFlow supports them but grouping is manual)
 3. Accept the visual inaccuracy for now
@@ -206,8 +228,8 @@ This is the hard part. VexFlow requires:
 
 ```ts
 interface MeasureNotes {
-  voice1: StaveNote[]  // melody (higher pitches, stem up)
-  voice2: StaveNote[]  // accompaniment (lower pitches, stem down)
+  voice1: StaveNote[]; // melody (higher pitches, stem up)
+  voice2: StaveNote[]; // accompaniment (lower pitches, stem down)
 }
 
 function groupIntoMeasures(
@@ -215,32 +237,32 @@ function groupIntoMeasures(
   timeSigNum: number,
   timeSigDen: number,
 ): MeasureNotes[] {
-  const beatsPerMeasure = timeSigNum  // e.g., 4 in 4/4
-  const totalBeats = Math.max(...notes.map(n => n.start_time + n.duration))
-  const measureCount = Math.ceil(totalBeats / beatsPerMeasure)
+  const beatsPerMeasure = timeSigNum; // e.g., 4 in 4/4
+  const totalBeats = Math.max(...notes.map((n) => n.start_time + n.duration));
+  const measureCount = Math.ceil(totalBeats / beatsPerMeasure);
 
-  const measures: MeasureNotes[] = []
+  const measures: MeasureNotes[] = [];
 
   for (let m = 0; m < measureCount; m++) {
-    const measureStart = m * beatsPerMeasure
-    const measureEnd = measureStart + beatsPerMeasure
+    const measureStart = m * beatsPerMeasure;
+    const measureEnd = measureStart + beatsPerMeasure;
 
     // Get notes that start within this measure
     const measureNotes = notes.filter(
-      n => n.start_time >= measureStart && n.start_time < measureEnd
-    )
+      (n) => n.start_time >= measureStart && n.start_time < measureEnd,
+    );
 
     // Group simultaneous notes
-    const groups = groupSimultaneous(measureNotes)
+    const groups = groupSimultaneous(measureNotes);
 
     // Build voices
     // For now: put all notes in voice1, fill gaps with rests
-    const voice1 = buildVoiceFromGroups(groups, measureStart, beatsPerMeasure)
+    const voice1 = buildVoiceFromGroups(groups, measureStart, beatsPerMeasure);
 
-    measures.push({ voice1, voice2: [] })
+    measures.push({ voice1, voice2: [] });
   }
 
-  return measures
+  return measures;
 }
 ```
 
@@ -264,28 +286,48 @@ function fillGapsWithRests(
 
 ### Already queried
 
-| Field | Used for |
-|-------|----------|
-| `Clip.notes[].pitch` | VexFlow key |
-| `Clip.notes[].start_time` | Measure grouping, ordering |
-| `Clip.notes[].duration` | VexFlow duration |
-| `Clip.length` | Total beats → measure count |
+| Field                     | Used for                    |
+| ------------------------- | --------------------------- |
+| `Clip.notes[].pitch`      | VexFlow key                 |
+| `Clip.notes[].start_time` | Measure grouping, ordering  |
+| `Clip.notes[].duration`   | VexFlow duration            |
+| `Clip.length`             | Total beats → measure count |
 
 ### Need to add to query
 
-| Field | Used for | In Domain.ts? |
-|-------|----------|---------------|
-| `Clip.signature_numerator` | Beats per measure (top of time sig) | Yes, line 44 |
-| `Clip.signature_denominator` | Note value that gets the beat (bottom of time sig) | Yes, line 43 |
+| Field                        | Used for                                           | In Domain.ts? |
+| ---------------------------- | -------------------------------------------------- | ------------- |
+| `Clip.signature_numerator`   | Beats per measure (top of time sig)                | Yes, line 44  |
+| `Clip.signature_denominator` | Note value that gets the beat (bottom of time sig) | Yes, line 43  |
 
 These are already in `Domain.ts:43-44` but **not queried** in `liveql.ts:10`. We'd need to add them:
 
 ```graphql
-{ live_set { view { detail_clip {
-    id name length is_midi_clip
-    signature_numerator signature_denominator
-    notes { note_id pitch start_time duration velocity mute probability velocity_deviation release_velocity }
-  } } } }
+{
+  live_set {
+    view {
+      detail_clip {
+        id
+        name
+        length
+        is_midi_clip
+        signature_numerator
+        signature_denominator
+        notes {
+          note_id
+          pitch
+          start_time
+          duration
+          velocity
+          mute
+          probability
+          velocity_deviation
+          release_velocity
+        }
+      }
+    }
+  }
+}
 ```
 
 ### Not needed (per your request)
@@ -303,27 +345,31 @@ These are already in `Domain.ts:43-44` but **not queried** in `liveql.ts:10`. We
 
 ```tsx
 // src/components/ScoreDisplay.tsx
-import { useRef, useEffect } from "react"
-import { VexFlow } from "vexflow"
-import type { Note } from "@/lib/Domain"
+import { useRef, useEffect } from "react";
+import { VexFlow } from "vexflow";
+import type { Note } from "@/lib/Domain";
 
 interface ScoreDisplayProps {
-  notes: Note[]
-  timeSigNum: number
-  timeSigDen: number
+  notes: Note[];
+  timeSigNum: number;
+  timeSigDen: number;
 }
 
-export function ScoreDisplay({ notes, timeSigNum, timeSigDen }: ScoreDisplayProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
+export function ScoreDisplay({
+  notes,
+  timeSigNum,
+  timeSigDen,
+}: ScoreDisplayProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!containerRef.current || notes.length === 0) return
+    if (!containerRef.current || notes.length === 0) return;
 
     // Clear previous render
-    containerRef.current.innerHTML = ""
+    containerRef.current.innerHTML = "";
 
-    VexFlow.loadFonts('Bravura', 'Academico').then(() => {
-      VexFlow.setFonts('Bravura', 'Academico')
+    VexFlow.loadFonts("Bravura", "Academico").then(() => {
+      VexFlow.setFonts("Bravura", "Academico");
 
       const factory = new VexFlow.Factory({
         renderer: {
@@ -331,16 +377,16 @@ export function ScoreDisplay({ notes, timeSigNum, timeSigDen }: ScoreDisplayProp
           width: 900,
           height: 400,
         },
-      })
+      });
 
       // ... convert notes to VexFlow staves ...
 
-      factory.draw()
-    })
-  }, [notes, timeSigNum, timeSigDen])
+      factory.draw();
+    });
+  }, [notes, timeSigNum, timeSigDen]);
 
-  if (notes.length === 0) return null
-  return <div ref={containerRef} />
+  if (notes.length === 0) return null;
+  return <div ref={containerRef} />;
 }
 ```
 
@@ -348,13 +394,15 @@ export function ScoreDisplay({ notes, timeSigNum, timeSigDen }: ScoreDisplayProp
 
 ```tsx
 // In src/routes/index.tsx, after NoteTable
-{clipInfo && notes.length > 0 && (
-  <ScoreDisplay
-    notes={notes}
-    timeSigNum={clipInfo.signatureNumerator}
-    timeSigDen={clipInfo.signatureDenominator}
-  />
-)}
+{
+  clipInfo && notes.length > 0 && (
+    <ScoreDisplay
+      notes={notes}
+      timeSigNum={clipInfo.signatureNumerator}
+      timeSigDen={clipInfo.signatureDenominator}
+    />
+  );
+}
 ```
 
 ---
@@ -385,15 +433,15 @@ Notes below ~pitch 60 (middle C) would benefit from bass clef. Simple heuristic:
 
 ## Decision: Low-level vs EasyScore
 
-| Factor | Low-level (StaveNote) | EasyScore (strings) |
-|--------|----------------------|---------------------|
-| Type safety | Full TypeScript types | String parsing, less type safety |
-| Programmatic generation | Direct object construction | Need to build strings |
-| Chords | `keys: ['c/4', 'e/4']` | `(C4 E4)/q` string syntax |
-| Accidentals | `.addModifier(new Accidental('#'))` | `C#5` in string |
-| Dots | `Dot.buildAndAttach([note])` | `C5/q.` in string |
-| Rests | `{ keys: ['b/4'], duration: 'qr' }` | `B4/qr` |
-| Dynamic width | Formatter handles it | Formatter handles it |
+| Factor                  | Low-level (StaveNote)               | EasyScore (strings)              |
+| ----------------------- | ----------------------------------- | -------------------------------- |
+| Type safety             | Full TypeScript types               | String parsing, less type safety |
+| Programmatic generation | Direct object construction          | Need to build strings            |
+| Chords                  | `keys: ['c/4', 'e/4']`              | `(C4 E4)/q` string syntax        |
+| Accidentals             | `.addModifier(new Accidental('#'))` | `C#5` in string                  |
+| Dots                    | `Dot.buildAndAttach([note])`        | `C5/q.` in string                |
+| Rests                   | `{ keys: ['b/4'], duration: 'qr' }` | `B4/qr`                          |
+| Dynamic width           | Formatter handles it                | Formatter handles it             |
 
 **Recommendation**: Use **low-level API** (`StaveNote` directly). We're generating notes programmatically from data, not writing them by hand. Building strings and then parsing them is an unnecessary indirection. The low-level API is type-safe and gives us full control over placement and modifiers.
 
@@ -422,45 +470,49 @@ export function renderScore(
   timeSigNum: number,
   timeSigDen: number,
 ): void {
-  const beatsPerMeasure = timeSigNum
-  const measures = groupIntoMeasures(notes, beatsPerMeasure)
+  const beatsPerMeasure = timeSigNum;
+  const measures = groupIntoMeasures(notes, beatsPerMeasure);
 
-  VexFlow.loadFonts('Bravura', 'Academico').then(() => {
-    VexFlow.setFonts('Bravura', 'Academico')
+  VexFlow.loadFonts("Bravura", "Academico").then(() => {
+    VexFlow.setFonts("Bravura", "Academico");
 
     const factory = new VexFlow.Factory({
-      renderer: { elementId: container, width: 900, height: 200 * Math.ceil(measures.length / 4) },
-    })
+      renderer: {
+        elementId: container,
+        width: 900,
+        height: 200 * Math.ceil(measures.length / 4),
+      },
+    });
 
-    let system = factory.System({ x: 10, y: 10, width: 850 })
+    let system = factory.System({ x: 10, y: 10, width: 850 });
 
     for (let i = 0; i < measures.length; i++) {
-      const measure = measures[i]
+      const measure = measures[i];
       const voice = factory.Voice({
         time: { num_beats: beatsPerMeasure, beat_value: timeSigDen },
-      })
-      voice.addTickables(measure.voice1)
+      });
+      voice.addTickables(measure.voice1);
 
-      const isFirst = i === 0
+      const isFirst = i === 0;
       const stave = system.addStave({
         voices: [voice],
-      })
+      });
 
       if (isFirst) {
-        stave.addClef('treble').addTimeSignature(`${timeSigNum}/${timeSigDen}`)
+        stave.addClef("treble").addTimeSignature(`${timeSigNum}/${timeSigDen}`);
       }
 
       // Auto-beam
-      const beams = VexFlow.Beam.generateBeams(measure.voice1)
+      const beams = VexFlow.Beam.generateBeams(measure.voice1);
 
       // Every 4 measures, start a new system
       if ((i + 1) % 4 === 0 && i < measures.length - 1) {
-        system = factory.System({ x: 10, y: system.y + 150, width: 850 })
+        system = factory.System({ x: 10, y: system.y + 150, width: 850 });
       }
     }
 
-    factory.draw()
-  })
+    factory.draw();
+  });
 }
 ```
 
@@ -468,11 +520,29 @@ export function renderScore(
 
 ## Open Questions
 
-| # | Question | Notes |
-|---|----------|-------|
-| 1 | Font loading | VexFlow 5 requires `loadFonts()` then `setFonts()`. Fonts loaded via `fetch` — need to be available. CDN fonts work fine. |
+| #   | Question     | Notes                                                                                                                     |
+| --- | ------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Font loading | VexFlow 5 requires `loadFonts()` then `setFonts()`. Fonts loaded via `fetch` — need to be available. CDN fonts work fine. |
+
+Use cdn fonts.
+
 | 2 | React re-render | `useEffect` with deps on `[notes, timeSigNum, timeSigDen]`. Clear container innerHTML before re-render. |
+
+what's the issue here?
+
 | 3 | Dynamic height | Score height depends on measure count. Calculate from `clip.length / timeSigNum` measures. |
 | 4 | Quantization grid | 16th note grid? 32nd? How aggressive? |
+
+32nd
+
 | 5 | Key signature | Skip for now — show all accidentals explicitly. Could add `Accidental.applyAccidentals()` later. |
+
+Defer
+
 | 6 | Layout | Single row? Multiple rows of 4 measures? Auto-wrap? |
+
+auto-wrap
+
+low-level stave approach is fine.
+what dependencies do we need to add to package.json.
+any other gaps for implementation?
