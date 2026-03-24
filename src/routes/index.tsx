@@ -1,128 +1,133 @@
-import { queryOptions, useQuery } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
-import { Schema } from "effect"
+import { useMutation } from "@tanstack/react-query"
+import { useState } from "react"
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
-import * as Domain from "@/lib/Domain"
-import { gql } from "@/lib/gql"
+import { Button } from "@/components/ui/button"
+import { NoteTable } from "@/components/NoteTable"
+import { type Note } from "@/lib/Domain"
+import { readClip, writeNotes } from "@/lib/liveql"
 
-const songStatusOptions = queryOptions({
-  queryKey: ["live_set", "status"],
-  queryFn: () =>
-    gql(
-      `{ live_set { id is_playing } }`,
-      Schema.Struct({
-        live_set: Schema.Struct({
-          id: Schema.Number,
-          is_playing: Schema.Boolean,
-        }),
-      }),
-    ),
-})
+interface ClipInfo {
+  id: number
+  name: string
+  length: number
+}
 
-const trackListOptions = queryOptions({
-  queryKey: ["live_set", "tracks"],
-  queryFn: () =>
-    gql(
-      `{ live_set { tracks { id name has_midi_input } } }`,
-      Schema.Struct({
-        live_set: Schema.Struct({
-          tracks: Schema.Array(
-            Schema.Struct({
-              id: Schema.Number,
-              name: Schema.String,
-              has_midi_input: Schema.Boolean,
-            }),
-          ),
-        }),
-      }),
-    ),
-})
-
-const overviewOptions = queryOptions({
-  queryKey: ["live_set", "overview"],
-  queryFn: () =>
-    gql(
-      `{ live_set {
-        id path is_playing
-        tracks {
-          id path name has_midi_input
-          clip_slots {
-            id path has_clip
-            clip { id path name looping length is_midi_clip end_time
-                   is_arrangement_clip signature_denominator signature_numerator start_time }
-          }
-        }
-      } }`,
-      Schema.Struct({ live_set: Domain.SongOverview }),
-    ),
-})
+let nextTempId = -1
 
 export const Route = createFileRoute("/")({
   component: RouteComponent,
 })
 
-function QueryCard({
-  title,
-  description,
-  query,
-}: {
-  title: string
-  description: string
-  query: ReturnType<typeof useQuery>
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        {query.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
-        {query.isError && (
-          <p className="text-sm text-destructive">
-            {query.error instanceof Error ? query.error.message : "Unknown error"}
-          </p>
-        )}
-        {query.isSuccess && (
-          <pre className="overflow-auto rounded bg-muted p-3 text-xs">
-            {JSON.stringify(query.data, null, 2)}
-          </pre>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
-
 function RouteComponent() {
-  const songStatus = useQuery(songStatusOptions)
-  const trackList = useQuery(trackListOptions)
-  const overview = useQuery(overviewOptions)
+  const [notes, setNotes] = useState<Note[]>([])
+  const [clipInfo, setClipInfo] = useState<ClipInfo | null>(null)
+  const [modifiedNoteIds, setModifiedNoteIds] = useState<Set<number>>(new Set())
+  const [deletedNoteIds, setDeletedNoteIds] = useState<Set<number>>(new Set())
+
+  const readMutation = useMutation({
+    mutationFn: () => readClip(),
+    onSuccess: (data) => {
+      const detailClip = data.live_set.view.detail_clip
+      if (!detailClip) return
+      setClipInfo({ id: detailClip.id, name: detailClip.name, length: detailClip.length })
+      setNotes([...(detailClip.notes ?? [])])
+      setModifiedNoteIds(new Set())
+      setDeletedNoteIds(new Set())
+    },
+  })
+
+  const writeMutation = useMutation({
+    mutationFn: writeNotes,
+    onSuccess: () => { readMutation.mutate() },
+  })
+
+  const handleWrite = () => {
+    if (!clipInfo) return
+    writeMutation.mutate({
+      data: {
+        clipId: clipInfo.id,
+        newNotes: notes.filter((n) => n.note_id < 0).map(({ note_id: _, ...rest }) => rest),
+        modifiedNotes: notes.filter(
+          (n) => modifiedNoteIds.has(n.note_id) && n.note_id > 0,
+        ),
+        removedNoteIds: [...deletedNoteIds],
+      },
+    })
+  }
+
+  const handleAddNote = () => {
+    setNotes((prev) => [
+      ...prev,
+      {
+        note_id: nextTempId--,
+        pitch: 60,
+        start_time: 0,
+        duration: 1,
+        velocity: 100,
+        mute: false,
+        probability: 1,
+        velocity_deviation: 0,
+        release_velocity: 64,
+      },
+    ])
+  }
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-4 p-4">
-      <h1 className="text-2xl font-bold">prelive</h1>
-      <QueryCard
-        title="Song Status"
-        description="{ live_set { id is_playing } }"
-        query={songStatus}
+    <div className="mx-auto max-w-2xl p-4">
+      <div className="mb-4 flex items-center gap-2">
+        <Button onClick={() => { readMutation.mutate() }} disabled={readMutation.isPending}>
+          {readMutation.isPending ? "Reading…" : "Read from Live"}
+        </Button>
+        <Button onClick={handleWrite} disabled={!clipInfo || writeMutation.isPending}>
+          {writeMutation.isPending ? "Writing…" : "Write to Live"}
+        </Button>
+        <Button variant="secondary" onClick={handleAddNote} disabled={!clipInfo}>
+          + Note
+        </Button>
+        {clipInfo && (
+          <span className="text-muted-foreground ml-auto text-sm">
+            {clipInfo.name} ({clipInfo.length} beats)
+          </span>
+        )}
+      </div>
+
+      {readMutation.isError && (
+        <p className="text-destructive mb-2 text-sm">
+          {readMutation.error instanceof Error ? readMutation.error.message : "Read failed"}
+        </p>
+      )}
+      {writeMutation.isError && (
+        <p className="text-destructive mb-2 text-sm">
+          {writeMutation.error instanceof Error ? writeMutation.error.message : "Write failed"}
+        </p>
+      )}
+
+      <NoteTable
+        notes={notes}
+        onUpdate={(rowIndex, columnId, value) => {
+          setNotes((old) =>
+            old.map((row, i) => (i === rowIndex ? { ...row, [columnId]: value } : row)),
+          )
+          const noteId = notes[rowIndex]?.note_id
+          if (noteId !== undefined && noteId > 0) {
+            setModifiedNoteIds((prev) => new Set(prev).add(noteId))
+          }
+        }}
+        onDelete={(rowIndex) => {
+          const noteId = notes[rowIndex]?.note_id
+          if (noteId !== undefined && noteId > 0) {
+            setDeletedNoteIds((prev) => new Set(prev).add(noteId))
+          }
+          setNotes((old) => old.filter((_, i) => i !== rowIndex))
+        }}
       />
-      <QueryCard
-        title="Track List"
-        description="{ live_set { tracks { id name has_midi_input } } }"
-        query={trackList}
-      />
-      <QueryCard
-        title="Full Overview"
-        description="live_set → tracks → clip_slots → clip"
-        query={overview}
-      />
+
+      {clipInfo && notes.length > 0 && (
+        <p className="text-muted-foreground mt-2 text-xs">
+          {notes.length} notes · {modifiedNoteIds.size} modified · {deletedNoteIds.size} deleted
+        </p>
+      )}
     </div>
   )
 }

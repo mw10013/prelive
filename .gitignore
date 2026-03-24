@@ -9,3 +9,4 @@ refs/
 logs/
 todo.md
 .playwright-cli/
+test-results/

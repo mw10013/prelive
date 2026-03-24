@@ -57,6 +57,30 @@ export const Note = Schema.Struct({
   release_velocity: Schema.Number,
 })
 
+export const NoteInput = Schema.Struct({
+  note_id: Schema.optional(Schema.Number),
+  pitch: Schema.Number,
+  start_time: Schema.Number,
+  duration: Schema.Number,
+  velocity: Schema.optional(Schema.Number),
+  mute: Schema.optional(Schema.Boolean),
+  probability: Schema.optional(Schema.Number),
+  velocity_deviation: Schema.optional(Schema.Number),
+  release_velocity: Schema.optional(Schema.Number),
+})
+
+export const ClipWithNotes = Schema.Struct({
+  id: Schema.Number,
+  name: Schema.String,
+  length: Schema.Number,
+  is_midi_clip: Schema.Boolean,
+  notes: Schema.NullOr(Schema.Array(Note)),
+})
+
+export type Note = Schema.Schema.Type<typeof Note>
+export type NoteInput = Schema.Schema.Type<typeof NoteInput>
+export type ClipWithNotes = Schema.Schema.Type<typeof ClipWithNotes>
+
 export const SongOverview = Schema.Struct({
   ...Song.fields,
   tracks: Schema.Array(
