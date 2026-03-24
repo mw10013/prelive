@@ -74,6 +74,8 @@ export const ClipWithNotes = Schema.Struct({
   name: Schema.String,
   length: Schema.Number,
   is_midi_clip: Schema.Boolean,
+  signature_numerator: Schema.Number,
+  signature_denominator: Schema.Number,
   notes: Schema.NullOr(Schema.Array(Note)),
 })
 

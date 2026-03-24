@@ -4,6 +4,7 @@ import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { NoteTable } from "@/components/NoteTable"
+import { ScoreDisplay } from "@/components/ScoreDisplay"
 import { type Note } from "@/lib/Domain"
 import { readClip, writeNotes } from "@/lib/liveql"
 
@@ -11,6 +12,8 @@ interface ClipInfo {
   id: number
   name: string
   length: number
+  signatureNumerator: number
+  signatureDenominator: number
 }
 
 let nextTempId = -1
@@ -30,7 +33,13 @@ function RouteComponent() {
     onSuccess: (data) => {
       const detailClip = data.live_set.view.detail_clip
       if (!detailClip) return
-      setClipInfo({ id: detailClip.id, name: detailClip.name, length: detailClip.length })
+      setClipInfo({
+        id: detailClip.id,
+        name: detailClip.name,
+        length: detailClip.length,
+        signatureNumerator: detailClip.signature_numerator,
+        signatureDenominator: detailClip.signature_denominator,
+      })
       setNotes([...(detailClip.notes ?? [])])
       setModifiedNoteIds(new Set())
       setDeletedNoteIds(new Set())
@@ -74,7 +83,7 @@ function RouteComponent() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl p-4">
+    <div className="mx-auto max-w-4xl p-4">
       <div className="mb-4 flex items-center gap-2">
         <Button onClick={() => { readMutation.mutate() }} disabled={readMutation.isPending}>
           {readMutation.isPending ? "Reading…" : "Read from Live"}
@@ -127,6 +136,14 @@ function RouteComponent() {
         <p className="text-muted-foreground mt-2 text-xs">
           {notes.length} notes · {modifiedNoteIds.size} modified · {deletedNoteIds.size} deleted
         </p>
+      )}
+
+      {clipInfo && (
+        <ScoreDisplay
+          notes={notes}
+          timeSigNum={clipInfo.signatureNumerator}
+          timeSigDen={clipInfo.signatureDenominator}
+        />
       )}
     </div>
   )

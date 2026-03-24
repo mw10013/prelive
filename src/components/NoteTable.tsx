@@ -74,18 +74,18 @@ function MuteCell({
 }
 
 const columns: ColumnDef<Note>[] = [
-  { accessorKey: "note_id", header: "ID", size: 50 },
-  { accessorKey: "pitch", header: "Pitch", size: 60, cell: EditableCell },
-  { accessorKey: "start_time", header: "Start", size: 70, cell: EditableCell },
-  { accessorKey: "duration", header: "Dur", size: 70, cell: EditableCell },
-  { accessorKey: "velocity", header: "Vel", size: 60, cell: EditableCell },
-  { accessorKey: "mute", header: "Mute", size: 50, cell: MuteCell },
+  { accessorKey: "note_id", header: "ID", size: 30 },
+  { accessorKey: "pitch", header: "Pitch", size: 52, cell: EditableCell },
+  { accessorKey: "start_time", header: "Start", size: 52, cell: EditableCell },
+  { accessorKey: "duration", header: "Dur", size: 52, cell: EditableCell },
+  { accessorKey: "velocity", header: "Vel", size: 46, cell: EditableCell },
+  { accessorKey: "mute", header: "Mute", size: 40, cell: MuteCell },
 ]
 
 const deleteColumn: ColumnDef<Note> = {
   id: "delete",
   header: "",
-  size: 40,
+  size: 24,
 }
 
 export function NoteTable({ notes, onUpdate, onDelete }: NoteTableProps) {
@@ -112,7 +112,7 @@ export function NoteTable({ notes, onUpdate, onDelete }: NoteTableProps) {
   })
 
   return (
-    <table className="w-full text-sm">
+    <table className="text-sm" style={{ tableLayout: "fixed", width: table.getTotalSize() }}>
       <thead>
         {table.getHeaderGroups().map((headerGroup) => (
           <tr key={headerGroup.id}>
