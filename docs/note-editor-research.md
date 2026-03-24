@@ -2,319 +2,310 @@
 
 Date: 2026-03-23
 
-Goal: a simple note editor in the index route. User clicks "Read" to fetch notes from the current Live clip, edits them in a TanStack Table, clicks "Write" to push changes back.
+Goal: simple note editor. Button to read notes from the Live clip in the Detail View, TanStack Table to display/edit, button to write changes back.
+
+---
+
+## What liveql Gives Us
+
+Verified from `refs/liveql/liveql-n4m.js` schema and resolvers.
+
+### Reading a clip and its notes — one query
+
+`SongView.detail_clip` is in the schema (line 106). `Clip.notes` is a field (line 137) backed by a resolver that calls `get_notes_extended(id, 0, 128, 0, clip.length)` and returns `[Note!]` sorted by start_time then pitch. No mutation needed for reading.
+
+```graphql
+{
+  live_set {
+    view {
+      detail_clip {
+        id
+        name
+        length
+        is_midi_clip
+        notes {
+          note_id
+          pitch
+          start_time
+          duration
+          velocity
+          mute
+          probability
+        }
+      }
+    }
+  }
+}
+```
+
+Returns `null` for `detail_clip` if no clip is open in Live's Detail View. Returns `null` for `notes` if not a MIDI clip.
+
+**Caveat**: `Clip.notes` queries `0..clip.length`. Notes in loop iterations beyond the initial length are missed. Acceptable for MVP.
+
+### Writing notes — three mutations
+
+All verified in the schema (lines 188–203):
+
+| Liveql Mutation                                       | LOM Call                              | When                             |
+| ----------------------------------------------------- | ------------------------------------- | -------------------------------- |
+| `clip_add_new_notes(id, notes_dictionary)`            | `Clip.add_new_notes(dict)`            | New notes (omit `note_id`)       |
+| `clip_apply_note_modifications(id, notes_dictionary)` | `Clip.apply_note_modifications(dict)` | Edited notes (include `note_id`) |
+| `clip_remove_notes_by_id(id, ids)`                    | `Clip.remove_notes_by_id(ids...)`     | Deleted notes                    |
+
+The input type `NotesDictionaryInput { notes: [NoteInput!]! }` is in the schema (line 174). `NoteInput.note_id` is optional (line 163).
+
+### Playback
+
+| Liveql Mutation          | Effect          |
+| ------------------------ | --------------- |
+| `song_start_playing(id)` | Start transport |
+| `song_stop_playing(id)`  | Stop transport  |
+| `clip_fire(id)`          | Launch the clip |
 
 ---
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│  Index Route (src/routes/index.tsx)                          │
-│                                                              │
-│  [Read from Live]  button                                    │
-│       │                                                      │
-│       ▼                                                      │
-│  useQuery ──► readNotes server fn ──► gql(clip_notes query)  │
-│       │                                                      │
-│       ▼                                                      │
-│  TanStack Table (editable cells)                             │
-│       │                                                      │
-│  [Write to Live]  button                                     │
-│       │                                                      │
-│       ▼                                                      │
-│  useMutation ──► writeNotes server fn ──► gql(mutation)      │
-│       │                                                      │
-│       ▼                                                      │
-│  invalidateQueries ──► re-read to confirm                    │
-└──────────────────────────────────────────────────────────────┘
+src/routes/index.tsx          — route component, state, buttons
+src/components/NoteTable.tsx  — TanStack Table with editable cells
+src/lib/liveql.ts             — server functions (readClip, writeNotes)
+src/lib/Domain.ts             — Effect schemas (already exists, needs additions)
+src/lib/gql.ts                — GraphQL fetch helper (already exists)
 ```
 
-Two server functions, two React hooks, one table. Minimal.
+### Data Flow
+
+```
+[Read from Live] click
+  → useMutation(readClip)
+  → server fn: gql(detail_clip + notes query)
+  → sets local state: { clip, notes }
+
+[TanStack Table]
+  → renders notes as editable rows
+  → tracks modified/deleted/new note IDs in local Sets
+
+[Write to Live] click
+  → partition notes by edit state (new / modified / deleted)
+  → useMutation(writeNotes)
+  → server fn: up to 3 gql mutations
+  → on success: re-read to sync note_ids
+```
 
 ---
 
-## Step 1: Server Functions (`createServerFn`)
+## Server Functions
 
-TanStack Start's `createServerFn` wraps server-side logic. The returned function is directly compatible with `useMutation`'s `mutationFn`.
+TanStack Start's `createServerFn` returns a function with signature `(opts: { data: TInput }) => Promise<TOutput>`. From `refs/tan-start/examples/react/start-trellaux/src/queries.ts`, the real-world pattern is to pass the server fn directly as `useMutation`'s `mutationFn`.
 
-### readNotes
-
-```ts
-import { createServerFn } from "@tanstack/react-start"
-
-export const readNotes = createServerFn({ method: "GET" })
-  .inputValidator((data: { clipId: number }) => data)
-  .handler(async ({ data: { clipId } }) => {
-    // call liveql via gql()
-    return gql(
-      `mutation GetNotes($id: Int!) {
-        clip_get_notes_extended(id: $id, from_pitch: 0, pitch_span: 128, from_time: 0, time_span: 9999)
-      }`,
-      Schema.Struct({ clip_get_notes_extended: Domain.NotesDictionary }),
-      { id: clipId },
-    )
-  })
-```
-
-But wait — we also need the clip metadata. Two options:
-
-**Option A**: Two separate queries (simpler, more modular)
-1. Query `detail_clip` for clip metadata + `id`
-2. Then `clip_get_notes_extended` for notes
-
-**Option B**: Single query that gets both (fewer round trips)
-
-We should use `detail_clip` as the entry point since the user selects the clip in Ableton:
+### readClip — fetches detail_clip + notes in one server round trip
 
 ```ts
-export const readClipAndNotes = createServerFn({ method: "GET" })
-  .handler(async () => {
-    // 1. Get detail_clip
-    const clipData = await gql(
-      `{ live_set { view { detail_clip { id name length is_midi_clip } } } }`,
-      Schema.Struct({
-        live_set: Schema.Struct({
-          view: Schema.Struct({
-            detail_clip: Schema.NullOr(Domain.ClipDetail),
-          }),
+import { createServerFn } from "@tanstack/react-start";
+
+export const readClip = createServerFn({ method: "GET" }).handler(async () => {
+  return gql(
+    `{ live_set { view { detail_clip {
+        id name length is_midi_clip
+        notes { note_id pitch start_time duration velocity mute probability }
+      } } } }`,
+    Schema.Struct({
+      live_set: Schema.Struct({
+        view: Schema.Struct({
+          detail_clip: Schema.NullOr(Domain.ClipWithNotes),
         }),
       }),
-    )
-    const clip = clipData.live_set.view.detail_clip
-    if (!clip) throw new Error("No clip selected in Live's Detail View")
-
-    // 2. Get notes for that clip
-    const notesData = await gql(
-      `mutation GetNotes($id: Int!, $length: Float!) {
-        clip_get_notes_extended(id: $id, from_pitch: 0, pitch_span: 128, from_time: 0, time_span: $length)
-      }`,
-      Schema.Struct({ clip_get_notes_extended: Domain.NotesDictionary }),
-      { id: clip.id, length: clip.length },
-    )
-
-    return { clip, notes: notesData.clip_get_notes_extended.notes }
-  })
+    }),
+  );
+});
 ```
 
-**Why two calls inside one server fn?** The first call gets the clip `id` and `length`. The second call needs those values. Both go server → liveql → Ableton. Bundling them hides the two-step from the client (single fetch round trip to our server).
+No input. No parameters. The user picks the clip in Ableton, we read whatever is in the Detail View.
 
-### writeNotes
+### writeNotes — partitions edits into up to 3 mutations
 
 ```ts
 export const writeNotes = createServerFn({ method: "POST" })
-  .inputValidator((data: {
-    clipId: number
-    newNotes: Domain.NoteInput[]
-    modifiedNotes: Domain.NoteInput[]
-    removedNoteIds: number[]
-  }) => data)
-  .handler(async ({ data: { clipId, newNotes, modifiedNotes, removedNoteIds } }) => {
-    // Three mutations in sequence:
-    if (newNotes.length > 0) {
-      await gql(
-        `mutation Add($id: Int!, $notes: NotesDictionaryInput!) {
+  .inputValidator(
+    (data: {
+      clipId: number;
+      newNotes: Domain.NoteInput[];
+      modifiedNotes: Domain.NoteInput[];
+      removedNoteIds: number[];
+    }) => data,
+  )
+  .handler(
+    async ({ data: { clipId, newNotes, modifiedNotes, removedNoteIds } }) => {
+      if (newNotes.length > 0) {
+        await gql(
+          `mutation($id: Int!, $notes: NotesDictionaryInput!) {
           clip_add_new_notes(id: $id, notes_dictionary: $notes) { id }
         }`,
-        Schema.Struct({ clip_add_new_notes: Schema.Struct({ id: Schema.Number }) }),
-        { id: clipId, notes: { notes: newNotes } },
-      )
-    }
-    if (modifiedNotes.length > 0) {
-      await gql(
-        `mutation Mod($id: Int!, $notes: NotesDictionaryInput!) {
+          Schema.Struct({
+            clip_add_new_notes: Schema.Struct({ id: Schema.Number }),
+          }),
+          { id: clipId, notes: { notes: newNotes } },
+        );
+      }
+      if (modifiedNotes.length > 0) {
+        await gql(
+          `mutation($id: Int!, $notes: NotesDictionaryInput!) {
           clip_apply_note_modifications(id: $id, notes_dictionary: $notes) { id }
         }`,
-        Schema.Struct({ clip_apply_note_modifications: Schema.Struct({ id: Schema.Number }) }),
-        { id: clipId, notes: { notes: modifiedNotes } },
-      )
-    }
-    if (removedNoteIds.length > 0) {
-      await gql(
-        `mutation Del($id: Int!, $ids: [Int!]!) {
+          Schema.Struct({
+            clip_apply_note_modifications: Schema.Struct({ id: Schema.Number }),
+          }),
+          { id: clipId, notes: { notes: modifiedNotes } },
+        );
+      }
+      if (removedNoteIds.length > 0) {
+        await gql(
+          `mutation($id: Int!, $ids: [Int!]!) {
           clip_remove_notes_by_id(id: $id, ids: $ids) { id }
         }`,
-        Schema.Struct({ clip_remove_notes_by_id: Schema.Struct({ id: Schema.Number }) }),
-        { id: clipId, ids: removedNoteIds },
-      )
-    }
-  })
-```
-
-**Key pattern from refs**: `createServerFn` returns a function with signature `(opts: { data: TInput }) => Promise<TOutput>`. TanStack Query's `useMutation` passes variables directly, so `mutationFn: writeNotes` receives `{ data: { clipId, ... } }` which matches.
-
-**From `refs/tan-start/examples/react/start-trellaux/src/queries.ts`** — the real-world pattern is:
-
-```ts
-const mutation = useMutation({
-  mutationFn: writeNotes,   // server fn directly
-  onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes"] }),
-})
-mutation.mutate({ data: { clipId, newNotes, modifiedNotes, removedNoteIds } })
+          Schema.Struct({
+            clip_remove_notes_by_id: Schema.Struct({ id: Schema.Number }),
+          }),
+          { id: clipId, ids: removedNoteIds },
+        );
+      }
+    },
+  );
 ```
 
 ---
 
-## Step 2: TanStack Table for Note Display
+## Table
 
-**From `refs/tan-table/examples/react/editable-data/src/main.tsx`** — the editable cell pattern:
+From `refs/tan-table/examples/react/editable-data/src/main.tsx`:
 
-```tsx
-const defaultColumn: Partial<ColumnDef<NoteRow>> = {
-  cell: ({ getValue, row: { index }, column: { id }, table }) => {
-    const initialValue = getValue()
-    const [value, setValue] = React.useState(initialValue)
-    const onBlur = () => table.options.meta?.updateData(index, id, value)
-    React.useEffect(() => { setValue(initialValue) }, [initialValue])
-    return <input value={value} onChange={e => setValue(e.target.value)} onBlur={onBlur} />
-  },
-}
-```
+TanStack Table's editable pattern: define a `defaultColumn` with a custom `cell` that renders an `<input>`, sync local state on `onBlur`, and push changes up via `table.options.meta.updateData`.
 
-But for a note editor, we want typed inputs:
-- **pitch**: number input (0–127)
-- **start_time**: number input (beats, float)
-- **duration**: number input (beats, float)
-- **velocity**: number input (0–127)
-- **mute**: checkbox
-- **probability**: number input (0–1)
+### Columns
 
-Columns:
+| Column     | Input                     | Constraints                |
+| ---------- | ------------------------- | -------------------------- |
+| pitch      | `<input type="number">`   | 0–127                      |
+| start_time | `<input type="number">`   | beats, step 0.25           |
+| duration   | `<input type="number">`   | beats, step 0.25, min 0.01 |
+| velocity   | `<input type="number">`   | 0–127                      |
+| mute       | `<input type="checkbox">` | boolean                    |
+| delete     | `<button>`                | removes row                |
 
-```ts
-const columnHelper = createColumnHelper<NoteRow>()
+### Edit tracking
 
-const columns = [
-  columnHelper.accessor("pitch", {
-    header: "Pitch",
-    cell: info => <NumberInput value={info.getValue()} onChange={info.setValue} min={0} max={127} />,
-  }),
-  columnHelper.accessor("start_time", {
-    header: "Start",
-    cell: info => <NumberInput value={info.getValue()} onChange={info.setValue} step={0.25} />,
-  }),
-  columnHelper.accessor("duration", {
-    header: "Duration",
-    cell: info => <NumberInput value={info.getValue()} onChange={info.setValue} step={0.25} min={0.01} />,
-  }),
-  columnHelper.accessor("velocity", {
-    header: "Vel",
-    cell: info => <NumberInput value={info.getValue()} onChange={info.setValue} min={0} max={127} />,
-  }),
-  columnHelper.accessor("mute", {
-    header: "Mute",
-    cell: info => <input type="checkbox" checked={info.getValue()} onChange={e => info.setValue(e.target.checked)} />,
-  }),
-  columnHelper.display({
-    id: "actions",
-    cell: ({ row }) => <button onClick={() => deleteNote(row.index)}>Delete</button>,
-  }),
-]
-```
+Maintain three local `Set`s alongside the `notes` array:
 
-### Table + Editable State
-
-We need `NoteRow` — a local type that extends `Note` with edit tracking:
-
-```ts
-type NoteRow = Domain.Note.Type & {
-  _editState: "unchanged" | "modified" | "new"
-  _deleted: boolean
-}
-```
-
-Or simpler — maintain three sets:
-- `notes` array (TanStack Table data source, includes all non-deleted notes)
-- `newNoteIds: Set<number>` — notes added in this session (negative temp IDs)
-- `modifiedNoteIds: Set<number>` — notes whose fields changed
+- `modifiedNoteIds: Set<number>` — notes where any field changed (tracks `note_id`)
 - `deletedNoteIds: Set<number>` — notes removed from table
+- New notes get a temporary negative `note_id` (e.g., `nextTempId--`) and are identified by `note_id < 0`
 
-When "Write" is clicked, partition the notes into `newNotes`, `modifiedNotes`, `removedNoteIds` and pass to `writeNotes` server fn.
+On write, partition the `notes` array:
 
-### Row Identity
+- `newNotes`: `notes.filter(n => n.note_id < 0)` (strip temp id, Live assigns real id)
+- `modifiedNotes`: `notes.filter(n => modifiedNoteIds.has(n.note_id))`
+- `removedNoteIds`: `[...deletedNoteIds]`
 
-Use `note_id` as the row ID:
+### Row identity
 
 ```ts
 const table = useReactTable({
   data: notes,
   columns,
   getCoreRowModel: getCoreRowModel(),
-  getRowId: row => String(row.note_id),
-  defaultColumn,
-  meta: {
-    updateData: (rowIndex, columnId, value) => {
-      setNotes(old => old.map((row, i) =>
-        i === rowIndex ? { ...row, [columnId]: value } : row
-      ))
-      // track modification
-      setModifiedNoteIds(prev => new Set(prev).add(notes[rowIndex].note_id))
-    },
-  },
-})
+  getRowId: (row) => String(row.note_id),
+});
 ```
 
 ---
 
-## Step 3: Wire It Up in the Index Route
+## Route Component
 
 ```tsx
 function RouteComponent() {
-  const queryClient = useQueryClient()
-  const [notes, setNotes] = React.useState<NoteRow[]>([])
-  const [clipInfo, setClipInfo] = React.useState<ClipInfo | null>(null)
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [clipInfo, setClipInfo] = useState<ClipInfo | null>(null);
+  const [modifiedNoteIds, setModifiedNoteIds] = useState<Set<number>>(
+    new Set(),
+  );
+  const [deletedNoteIds, setDeletedNoteIds] = useState<Set<number>>(new Set());
 
-  // Read mutation (use as query-like via useMutation)
   const readMutation = useMutation({
-    mutationFn: readClipAndNotes,
+    mutationFn: readClip,
     onSuccess: (data) => {
-      setClipInfo(data.clip)
-      setNotes(data.notes.map(n => ({ ...n, _editState: "unchanged" })))
+      const detailClip = data.live_set.view.detail_clip;
+      if (!detailClip) return;
+      setClipInfo({
+        id: detailClip.id,
+        name: detailClip.name,
+        length: detailClip.length,
+      });
+      setNotes(detailClip.notes ?? []);
+      setModifiedNoteIds(new Set());
+      setDeletedNoteIds(new Set());
     },
-  })
+  });
 
-  // Write mutation
   const writeMutation = useMutation({
     mutationFn: writeNotes,
-    onSuccess: () => {
-      // Re-read to sync note_ids (new notes get real IDs from Live)
-      readMutation.mutate({ data: {} })
-    },
-  })
+    onSuccess: () => readMutation.mutate({ data: {} }),
+  });
 
-  // Derive write payload from current state
   const handleWrite = () => {
-    if (!clipInfo) return
+    if (!clipInfo) return;
     writeMutation.mutate({
       data: {
         clipId: clipInfo.id,
-        newNotes: notes.filter(n => n.note_id < 0),  // temp IDs
-        modifiedNotes: notes.filter(n => modifiedNoteIds.has(n.note_id) && n.note_id > 0),
+        newNotes: notes.filter((n) => n.note_id < 0),
+        modifiedNotes: notes.filter(
+          (n) => modifiedNoteIds.has(n.note_id) && n.note_id > 0,
+        ),
         removedNoteIds: [...deletedNoteIds],
       },
-    })
-  }
+    });
+  };
 
   return (
     <div>
-      <button onClick={() => readMutation.mutate({ data: {} })} disabled={readMutation.isPending}>
+      <button onClick={() => readMutation.mutate({ data: {} })}>
         Read from Live
       </button>
-      <button onClick={handleWrite} disabled={!clipInfo || writeMutation.isPending}>
+      <button onClick={handleWrite} disabled={!clipInfo}>
         Write to Live
       </button>
-      {clipInfo && <p>{clipInfo.name} ({clipInfo.length} beats)</p>}
-      <NoteTable notes={notes} />
+      {clipInfo && (
+        <p>
+          {clipInfo.name} ({clipInfo.length} beats)
+        </p>
+      )}
+      <NoteTable
+        notes={notes}
+        onUpdate={(rowIndex, columnId, value) => {
+          setNotes((old) =>
+            old.map((row, i) =>
+              i === rowIndex ? { ...row, [columnId]: value } : row,
+            ),
+          );
+          setModifiedNoteIds((prev) =>
+            new Set(prev).add(notes[rowIndex].note_id),
+          );
+        }}
+        onDelete={(rowIndex) => {
+          setDeletedNoteIds((prev) =>
+            new Set(prev).add(notes[rowIndex].note_id),
+          );
+          setNotes((old) => old.filter((_, i) => i !== rowIndex));
+        }}
+      />
     </div>
-  )
+  );
 }
 ```
 
 ---
 
-## Step 4: Domain Schemas Needed
-
-Add to `src/lib/Domain.ts`:
+## Domain Schemas — additions to `src/lib/Domain.ts`
 
 ```ts
 export const NoteInput = Schema.Struct({
@@ -327,51 +318,57 @@ export const NoteInput = Schema.Struct({
   probability: Schema.optional(Schema.Number),
   velocity_deviation: Schema.optional(Schema.Number),
   release_velocity: Schema.optional(Schema.Number),
-})
+});
 
-export const NotesDictionary = Schema.Struct({
-  notes: Schema.Array(Note),
-})
-
-export const ClipDetail = Schema.Struct({
+export const ClipWithNotes = Schema.Struct({
   id: Schema.Number,
   name: Schema.String,
   length: Schema.Number,
   is_midi_clip: Schema.Boolean,
-})
+  notes: Schema.NullOr(Schema.Array(Note)),
+});
 ```
 
 ---
 
 ## Decisions
 
-| Decision | Choice | Rationale |
-|---|---|---|
-| Read approach | Single server fn with two gql calls | Hides two-step from client, single fetch round trip |
-| Write approach | Single server fn with up to 3 gql calls | new/modified/deleted partitioned server-side |
-| Table lib | TanStack Table v8 | Already installed, supports editable cells |
-| Edit tracking | Local `Set<number>` for modified/new/deleted IDs | Simple, no complex state management |
-| Row IDs | `note_id` (negative for new notes) | Stable identity through edits |
-| Clip selection | `SongView.detail_clip` | User selects in Ableton, no app UI needed |
-| Mutations vs queries | `useMutation` for both read and write | `readClipAndNotes` is imperative (button-triggered), not a polling query |
-
----
-
-## File Plan
-
-| File | Change |
-|---|---|
-| `src/lib/Domain.ts` | Add `NoteInput`, `NotesDictionary`, `ClipDetail` schemas |
-| `src/lib/liveql.ts` (new) | `readClipAndNotes` and `writeNotes` server functions |
-| `src/routes/index.tsx` | Replace `QueryCard` demo with note editor UI |
-| `src/components/NoteTable.tsx` (new) | TanStack Table component with editable cells |
+| Decision        | Choice                                       | Why                                                          |
+| --------------- | -------------------------------------------- | ------------------------------------------------------------ |
+| Read notes      | `Clip.notes` field, no mutation              | Resolver handles `get_notes_extended` internally. One query. |
+| Write notes     | Three mutations (add/modify/remove)          | Matches liveql schema exactly                                |
+| Read trigger    | `useMutation`, not `useQuery`                | Imperative button press, not polling                         |
+| Write → re-read | `onSuccess` calls `readMutation.mutate`      | New notes get real `note_id`s from Live                      |
+| Clip selection  | `SongView.detail_clip`                       | User selects in Ableton, no app navigation UI needed         |
+| Table library   | TanStack Table v8                            | Installed, has editable cell pattern in examples             |
+| Edit tracking   | Three `Set<number>` (modified, deleted, new) | Minimal state, partition at write time                       |
+| New note IDs    | Temporary negative integers                  | Distinguish new from existing in the partition               |
 
 ---
 
 ## Open Questions
 
-1. **Adding new notes**: What UI for adding a note? Click on empty row? Dedicated "Add Note" button with defaults?
-2. **Sorting**: Should the table be sortable by column? (TanStack Table supports `getSortedRowModel`)
-3. **Pitch display**: Show raw MIDI number (0–127) or note name + octave (C3, D#4)?
-4. **Undo**: Should edits be undoable before writing? (local history stack)
-5. **Polling**: Should we re-read notes periodically to catch changes made directly in Live?
+All resolved.
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | Add note UI | Click on empty row for now. Text fields for each. |
+| 2 | Pitch display | Raw number (0–127). |
+| 3 | Sort | Not applicable — notes come sorted from server (start_time asc, pitch asc). This is music data. |
+
+### TanStack Start / createServerFn
+
+Project **is** already using TanStack Start (`StartClient` in `main.tsx`). `createServerFn` from `@tanstack/react-start` works alongside `createFileRoute` — same file or separate file. No pre-work needed.
+
+Pattern:
+```ts
+import { createFileRoute } from '@tanstack/react-router'
+import { createServerFn } from '@tanstack/react-start'
+
+const readClip = createServerFn({ method: 'GET' }).handler(async () => { ... })
+
+export const Route = createFileRoute('/')({
+  component: RouteComponent,
+  // can also use loader: () => readClip() for SSR
+})
+```
