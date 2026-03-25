@@ -2,7 +2,7 @@
 
 Date: 2026-03-24
 
-Goal: Document the implementation path for Pipeline 1 (midi2ly + LilyPond) including macOS installation steps, CLI usage, and integration patterns.
+Goal: Document the implementation path for Pipeline 1 (midi2ly + LilyPond) using Effect v4 idioms for Node operations, enabling side-by-side operation with existing VexFlow renderer.
 
 ---
 
@@ -14,47 +14,53 @@ Note[] → MidiWriterJS → .mid → midi2ly → .ly → lilypond --svg → .svg
 
 ---
 
-## macOS Installation
+## LilyPond Installation Status
 
-### LilyPond via Homebrew (Recommended)
-
-```sh
-brew install lilypond
-```
-
-**Current stable**: 2.24.4
-
-**Dependencies** (auto-resolved by Homebrew):
-- bdw-gc 8.2.12
-- freetype 2.14.2
-- ghostscript 10.07.0
-- guile 3.0.11
-- python@3.14 3.14.3
-- fontforge
-- texinfo 7.3
-
-**Architecture support**: Apple Silicon and Intel (macOS Sequoia, Sonoma, Tahoe)
-
-### Alternative: Manual Binary Install
-
-If Homebrew is unavailable:
-
-```sh
-# Download from https://lilypond.org/download.html
-# macOS x86_64 binary works on macOS 10.15+ (Catalina and higher)
-
-# Extract and add to PATH
-export PATH="/path/to/lilypond-2.24.4/bin:$PATH"
-```
-
-### Verification
+**Installed via Homebrew.**
 
 ```sh
 lilypond --version
-# Should show: LilyPond 2.24.4
+# LilyPond 2.24.4
 
-midi2ly --version
-# Should show: midi2ly (LilyPond) 2.24.4
+midi2ly --version  
+# midi2ly (LilyPond) 2.24.4
+```
+
+---
+
+## Effect v4 Patterns for Node Operations
+
+Based on `refs/effect4/`, we use Effect v4 idioms for all Node.js operations:
+
+### Key Modules
+
+| Module | Purpose |
+|--------|---------|
+| `@effect/platform-node` | NodeServices layer, NodeFileSystem |
+| `effect/FileSystem` | Abstract file operations |
+| `effect/unstable/process/ChildProcess` | Spawning CLI commands |
+| `effect/Path` | Path utilities |
+
+### Core Patterns
+
+1. **Use `Effect.fn("name")` for named functions** - better stack traces
+2. **Use `Effect.gen` for imperative-style async code**
+3. **Use `Effect.acquireRelease` for resource cleanup** - temp files/directories
+4. **Use `FileSystem.FileSystem` service** - not raw `node:fs`
+5. **Use `ChildProcessSpawner` service** - not raw `child_process`
+
+### Layer Composition
+
+```typescript
+import { Layer } from "effect"
+import { NodeFileSystem } from "@effect/platform-node"
+import { NodeChildProcessSpawner } from "@effect/platform-node-shared"
+
+// Base layer with Node services
+const nodeLayer = Layer.mergeAll(
+  NodeFileSystem.layer,
+  NodeChildProcessSpawner.layer
+)
 ```
 
 ---
@@ -141,28 +147,23 @@ lilypond -dresolution=300 -fpng output.ly  # 300 DPI PNG
 
 ---
 
-## Full Pipeline Implementation
+## Effect v4 Implementation
 
 ### Step 1: MIDI Generation (Note[] → .mid)
 
+Pure computation, no Effect needed:
+
 ```typescript
-import MidiWriter from 'midi-writer-js'
+import MidiWriter from "midi-writer-js"
 
 const midiToNoteName = (midi: number): string => {
-  const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+  const notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
   const octave = Math.floor(midi / 12) - 1
   const note = notes[midi % 12]
   return `${note}${octave}`
 }
 
-interface Note {
-  pitch: number      // MIDI number
-  start_time: number // in beats
-  duration: number   // in beats
-  velocity: number   // 0-127
-}
-
-const notesToMidiFile = (notes: Note[], ticksPerBeat: number = 480): Buffer => {
+const notesToMidiFile = (notes: ReadonlyArray<Note>, ticksPerBeat: number = 480): Uint8Array => {
   const track = new MidiWriter.Track()
   track.setTempo(120)
   track.addEvent(new MidiWriter.TimeSignatureEvent({
@@ -180,98 +181,167 @@ const notesToMidiFile = (notes: Note[], ticksPerBeat: number = 480): Buffer => {
     }))
   }
 
-  return Buffer.from(new MidiWriter.Writer(track).buildFile())
+  return Uint8Array.from(new MidiWriter.Writer(track).buildFile())
 }
 ```
 
 ### Step 2: MIDI → LilyPond (.mid → .ly)
 
 ```typescript
-import { execSync } from 'child_process'
-import { writeFileSync, readFileSync, unlinkSync } from 'fs'
-import { join } from 'path'
+import { Effect } from "effect"
+import type { FileSystem } from "effect/FileSystem"
+import type { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
+import * as ChildProcess from "effect/unstable/process/ChildProcess"
+import { Path } from "effect/Path"
 
-const midiToLy = (
-  midiBuffer: Buffer,
-  options: {
-    durationQuant?: number
-    startQuant?: number
-    key?: string
-    tuplets?: string[]
-  } = {}
-): string => {
-  const tmpDir = '/tmp/prelive-midi'
-  const tmpMidi = join(tmpDir, `temp-${Date.now()}.mid`)
-  const tmpLy = join(tmpDir, `temp-${Date.now()}.ly`)
+const midiToLy = Effect.fn("midiToLy")(
+  function* (
+    midiBuffer: Uint8Array,
+    options: {
+      readonly durationQuant?: number
+      readonly startQuant?: number
+      readonly key?: string
+      readonly tuplets?: ReadonlyArray<string>
+    } = {}
+  ): Effect.Effect<string, PlatformError, FileSystem | ChildProcessSpawner | Path> {
+    const fs = yield* FileSystem
+    const path = yield* Path
+    const spawner = yield* ChildProcessSpawner
 
-  // Write MIDI to temp file
-  writeFileSync(tmpMidi, midiBuffer)
+    // Create scoped temp directory - auto-cleanup on scope exit
+    const tmpDir = yield* fs.makeTempDirectoryScoped({ prefix: "midi2ly-" })
 
-  // Build midi2ly command
-  const args = ['midi2ly']
-  if (options.durationQuant) args.push(`--duration-quant=${options.durationQuant}`)
-  if (options.startQuant) args.push(`--start-quant=${options.startQuant}`)
-  if (options.key) args.push(`--key=${options.key}`)
-  for (const tuplet of (options.tuplets ?? [])) {
-    args.push(`--allow-tuplet=${tuplet}`)
+    const tmpMidi = path.join(tmpDir, "input.mid")
+    const tmpLy = path.join(tmpDir, "output.ly")
+
+    // Write MIDI to temp file
+    yield* fs.writeFile(tmpMidi, midiBuffer)
+
+    // Build midi2ly command
+    const args: Array<string> = []
+    if (options.durationQuant) args.push(`--duration-quant=${options.durationQuant}`)
+    if (options.startQuant) args.push(`--start-quant=${options.startQuant}`)
+    if (options.key) args.push(`--key=${options.key}`)
+    for (const tuplet of (options.tuplets ?? [])) {
+      args.push(`--allow-tuplet=${tuplet}`)
+    }
+    args.push("-o", tmpLy, tmpMidi)
+
+    // Execute midi2ly
+    yield* spawner.string(
+      ChildProcess.make("midi2ly", args)
+    )
+
+    // Read result
+    const lyContent = yield* fs.readFileString(tmpLy)
+
+    return lyContent
   }
-  args.push(`-o "${tmpLy}"`, `"${tmpMidi}"`)
-
-  // Execute conversion
-  execSync(args.join(' '), { stdio: 'pipe' })
-
-  // Read result
-  const lyContent = readFileSync(tmpLy, 'utf-8')
-
-  // Cleanup
-  unlinkSync(tmpMidi)
-  unlinkSync(tmpLy)
-
-  return lyContent
-}
+)
 ```
 
 ### Step 3: LilyPond Engraving (.ly → .svg)
 
 ```typescript
-const lyToSvg = (lyContent: string): Buffer => {
-  const tmpDir = '/tmp/prelive-midi'
-  const tmpLy = join(tmpDir, `temp-${Date.now()}.ly`)
-  const tmpSvg = join(tmpDir, `temp-${Date.now()}.svg`)
+const lyToSvg = Effect.fn("lyToSvg")(
+  function* (
+    lyContent: string
+  ): Effect.Effect<Uint8Array, PlatformError, FileSystem | ChildProcessSpawner | Path> {
+    const fs = yield* FileSystem
+    const path = yield* Path
+    const spawner = yield* ChildProcessSpawner
 
-  // Write .ly to temp file
-  writeFileSync(tmpLy, lyContent)
+    // Create scoped temp directory - auto-cleanup on scope exit
+    const tmpDir = yield* fs.makeTempDirectoryScoped({ prefix: "lilypond-" })
 
-  // Execute lilypond
-  execSync(`lilypond -dbackend=svg -o "${tmpSvg.replace('.svg', '')}" "${tmpLy}"`, {
-    stdio: 'pipe'
-  })
+    const tmpLy = path.join(tmpDir, "score.ly")
+    const outputBase = path.join(tmpDir, "score")
 
-  // Read result
-  const svgBuffer = readFileSync(tmpSvg)
+    // Write .ly to temp file
+    yield* fs.writeFileString(tmpLy, lyContent)
 
-  // Cleanup
-  unlinkSync(tmpLy)
-  unlinkSync(tmpSvg)
+    // Execute lilypond for SVG output
+    yield* spawner.string(
+      ChildProcess.make("lilypond", ["-dbackend=svg", "-o", outputBase, tmpLy])
+    )
 
-  return svgBuffer
+    // Read SVG result
+    const svgBuffer = yield* fs.readFile(`${outputBase}.svg`)
+
+    return svgBuffer
+  }
+)
+```
+
+### Combined Pipeline with Service
+
+```typescript
+import { ServiceMap, Layer } from "effect"
+import { NodeFileSystem } from "@effect/platform-node"
+import { NodeChildProcessSpawner } from "@effect/platform-node-shared"
+
+class LilyPondError extends Schema.TaggedErrorClass<LilyPondError>()("LilyPondError", {
+  message: Schema.String,
+  cause: Schema.Defect
+}) {}
+
+export class LilyPondRenderer extends ServiceMap.Service<LilyPondRenderer, {
+  readonly renderToSvg: (
+    notes: ReadonlyArray<Note>
+  ) => Effect.Effect<Uint8Array, LilyPondError>
+}>("LilyPondRenderer") {
+  static readonly layer = Layer.effect(
+    LilyPondRenderer,
+    Effect.gen(function* () {
+      const renderToSvg = Effect.fn("LilyPondRenderer.renderToSvg")(
+        function* (notes: ReadonlyArray<Note>): Effect.Effect<Uint8Array, LilyPondError> {
+          const midiBuffer = notesToMidiFile(notes)
+
+          const lyContent = yield* midiToLy(midiBuffer, {
+            durationQuant: 16,
+            startQuant: 16,
+            key: "0", // C major
+            tuplets: ["8*2/3", "16*3/2"]
+          }).pipe(
+            Effect.mapError((e) => new LilyPondError({ message: "midi2ly failed", cause: e }))
+          )
+
+          const svgBuffer = yield* lyToSvg(lyContent).pipe(
+            Effect.mapError((e) => new LilyPondError({ message: "lilypond failed", cause: e }))
+          )
+
+          return svgBuffer
+        }
+      )
+
+      return LilyPondRenderer.of({ renderToSvg })
+    })
+  ).pipe(
+    Layer.provide(NodeFileSystem.layer),
+    Layer.provide(NodeChildProcessSpawner.layer)
+  )
 }
 ```
 
-### Combined Pipeline
+---
+
+## Runtime Integration
+
+Add LilyPondRenderer layer to existing runtime:
 
 ```typescript
-const generateScoreSvg = (notes: Note[]): Buffer => {
-  const midiBuffer = notesToMidiFile(notes, 480)
-  const lyContent = midiToLy(midiBuffer, {
-    durationQuant: 16,
-    startQuant: 16,
-    key: '0', // C major
-    tuplets: ['8*2/3', '16*3/2']
-  })
-  const svgBuffer = lyToSvg(lyContent)
-  return svgBuffer
-}
+// src/lib/runtime.ts
+import { ConfigProvider, Layer, ManagedRuntime } from "effect"
+import { LilyPondRenderer } from "@/lib/lilypond/renderer"
+
+const baseLayer = Layer.mergeAll(
+  ConfigProvider.layer(ConfigProvider.fromEnv()),
+  LilyPondRenderer.layer  // Add here
+)
+
+const appLayer = baseLayer
+
+export const runtime = ManagedRuntime.make(appLayer)
 ```
 
 ---
@@ -281,13 +351,15 @@ const generateScoreSvg = (notes: Note[]): Buffer => {
 Since our Note[] uses beat-based timing (floats), we should pre-quantize before MIDI generation:
 
 ```typescript
-const quantizeNotes = (notes: Note[], gridSize: number = 1/16): Note[] => {
-  return notes.map(note => ({
+const quantizeNotes = (
+  notes: ReadonlyArray<Note>, 
+  gridSize: number = 1 / 16
+): ReadonlyArray<Note> =>
+  notes.map((note) => ({
     ...note,
     start_time: Math.round(note.start_time / gridSize) * gridSize,
-    duration: Math.round(note.duration / gridSize) * gridSize,
+    duration: Math.round(note.duration / gridSize) * gridSize
   }))
-}
 ```
 
 With 1/16 grid (sixteenth notes), midi2ly with `--duration-quant=16 --start-quant=16` will produce clean output.
@@ -319,44 +391,37 @@ If midi2ly output is poor quality:
 
 ---
 
-## Integration with TanStack Start
+## Performance Considerations
 
-### Server Function Pattern
+| Component | Latency | Notes |
+|-----------|---------|-------|
+| MIDI generation | < 10ms | Pure JS, in-process |
+| midi2ly | < 100ms | Subprocess spawn |
+| lilypond | 200-500ms | SVG rendering |
+| **Total** | **~500ms** | Server-side only |
 
-```typescript
-// src/routes/api/score.ts (or similar)
-import { createServerFn } from '@tanstack/react-start'
-
-export const generateScoreSvg = createServerFn({ method: 'POST' })
-  .validator((data: { notes: Note[] }) => data)
-  .handler(async ({ data }) => {
-    const svgBuffer = await generateScoreSvg(data.notes)
-    return new Response(svgBuffer, {
-      headers: { 'Content-Type': 'image/svg+xml' }
-    })
-  })
-```
-
-### Client Usage
-
-```typescript
-const { mutateAsync } = useMutation({
-  mutationFn: async (notes: Note[]) => {
-    const response = await generateScoreSvg({ notes })
-    return await response.text() // SVG string
-  }
-})
-```
+**Caching strategy**: VexFlow is instant (client). LilyPond is server-side with ~500ms latency but higher fidelity. Consider caching rendered SVGs keyed by note content hash.
 
 ---
 
-## Performance Considerations
+## File Structure
 
-- **midi2ly**: < 100ms for typical scores
-- **lilypond**: 200-500ms for SVG, varies with complexity
-- **Total pipeline**: ~500ms per score
-- **Caching**: Consider caching .ly files for repeated renders
-- **Async**: Use worker threads or async subprocess for non-blocking rendering
+```
+src/
+├── lib/
+│   ├── lilypond/
+│   │   ├── renderer.ts      # LilyPondRenderer service
+│   │   ├── midi.ts          # notesToMidiFile, quantizeNotes
+│   │   └── types.ts         # PlatformError re-exports
+│   └── vexflow/
+│       └── render-score.ts  # Existing VexFlow renderer
+├── components/
+│   └── ScoreDisplay.tsx     # Side-by-side tabs
+└── routes/
+    └── api/
+        └── score/
+            └── lilypond.ts  # Server function
+```
 
 ---
 
@@ -377,10 +442,23 @@ lilypond -dbackend=svg output.ly
 
 ---
 
+## Dependencies
+
+No new npm packages needed. Uses existing:
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `effect` | 4.0.0-beta.38 | Core Effect runtime |
+| `@effect/platform-node` | 4.0.0-beta.38 | NodeFileSystem, NodeChildProcessSpawner |
+| `midi-writer-js` | (new) | Note[] → MIDI |
+| LilyPond | 2.24.4 | midi2ly + engraving (system binary) |
+
+---
+
 ## Links
 
 - LilyPond midi2ly docs: https://lilypond.org/doc/v2.24/Documentation/usage/invoking-midi2ly
 - LilyPond Homebrew formula: https://formulae.brew.sh/formula/lilypond
-- LilyPond download: https://lilypond.org/download.html
+- Effect v4 ChildProcess example: refs/effect4/ai-docs/src/60_child-process/10_working-with-child-processes.ts
+- Effect v4 FileSystem: refs/effect4/packages/platform-node-shared/src/NodeFileSystem.ts
 - MidiWriterJS: https://github.com/grimmdude/MidiWriterJS
-- gin66/midi2ly (alternative): https://github.com/gin66/midi2ly
