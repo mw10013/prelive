@@ -12,7 +12,6 @@ and produce score output that can be rendered on a web page, ideally as SVG or a
 
 Companions:
 
-- `docs/vexflow-score-research.md`
 - `docs/lilypond-score-research.md`
 
 ---
@@ -28,7 +27,6 @@ The ecosystem splits into two buckets:
 
 For this project, the most realistic options are:
 
-- **`vexflow`** if we want full control and can build our own `Note[] -> notation` conversion.
 - **`opensheetmusicdisplay`** if we can convert our data to **MusicXML** first.
 - **`abcjs`** if we can convert our data to **ABC** and only need simpler notation.
 - **`lilypond`** CLI if we want the best engraving quality and are OK doing server/local rendering.
@@ -37,46 +35,14 @@ For this project, the most realistic options are:
 
 ## Best candidates
 
-### 1. VexFlow
-
-Best fit when input is a note/event list and we are willing to build notation logic ourselves.
-
-Why it fits:
-
-- DuckDuckGo/npm summary: VexFlow is an "open-source library for rendering music notation," is "written in TypeScript," outputs to "HTML Canvas and SVG," and "works in browsers and also in Node.js projects".
-- Existing repo research already matches this: `docs/vexflow-score-research.md:25` says VexFlow is a "pure TypeScript/JavaScript library" that renders to "SVG or Canvas".
-
-What it accepts well:
-
-- explicit notes, rests, measures, voices, beams, tuplets, accidentals
-- custom note/event list after our conversion
-
-What it does **not** give us:
-
-- MIDI-to-notation inference out of the box
-- automatic score-quality quantization from arbitrary piano-roll timing
-- a one-call `renderMidiToScore()` workflow
-
-Takeaway:
-
-- strongest JS/TS option for `Note[] -> SVG in browser`
-- requires us to own measure grouping, duration quantization, rests, chords, clefs, ties, accidentals
-
-Sources:
-
-- https://github.com/0xfe/vexflow
-- https://0xfe.github.io/vexflow/
-
----
-
-### 2. OpenSheetMusicDisplay
+### 1. OpenSheetMusicDisplay
 
 Best fit when we can generate **MusicXML** first and want a higher-level score renderer.
 
 Key doc excerpts:
 
 - OSMD site: "Responsive rendering of MusicXML in the browser"
-- OSMD site: "Display and render MusicXML sheet music and guitar tabs in a browser(less) environment using VexFlow."
+- OSMD site: "Display and render MusicXML sheet music and guitar tabs in a browser(less) environment."
 - DuckDuckGo/npm summary: "Outputs SVG or PNG, also via nodejs script in the command line, completely browserless"
 
 What it accepts well:
@@ -102,7 +68,7 @@ Sources:
 
 ---
 
-### 3. abcjs
+### 2. abcjs
 
 Best fit when we can generate **ABC notation** and want quick SVG rendering in-browser.
 
@@ -141,7 +107,7 @@ Sources:
 
 ---
 
-### 4. LilyPond CLI
+### 3. LilyPond CLI
 
 Best fit when local/server-side rendering quality matters more than browser-native rendering.
 
@@ -318,7 +284,7 @@ Source:
 
 | Need                                             | Best option               |
 | ------------------------------------------------ | ------------------------- |
-| Raw `Note[]` in app, render on page, max control | **VexFlow**               |
+| Raw `Note[]` in app, render on page (server OK)   | **LilyPond**              |
 | Best browser renderer if we can emit MusicXML    | **OpenSheetMusicDisplay** |
 | Lightweight browser SVG from text notation       | **abcjs**                 |
 | Best final engraving quality via local CLI       | **LilyPond**              |
@@ -329,22 +295,21 @@ Source:
 
 ## Practical recommendation for this repo
 
-Given our existing research in `docs/vexflow-score-research.md` and the shape of our `Note[]` data, I would rank the paths like this:
+Given the LilyPond pipeline already in the repo, I would rank the paths like this:
 
-1. **VexFlow first**
-   - best match for `Note[]`
-   - pure TS/JS
-   - renders SVG in browser
-   - no external binary
+1. **LilyPond CLI first**
+   - best engraving quality
+   - reliable for complex rhythms and polyphony
+   - server/local asset generation
 
 2. **MusicXML pipeline second**
    - generate MusicXML from our note data
    - render with **OSMD** or **Verovio**
-   - better high-level notation semantics, more interoperability
+   - better interoperability
 
-3. **LilyPond CLI third**
-   - if engraving quality beats interactivity
-   - great for local/server asset generation
+3. **abcjs third**
+   - good for quick client-side previews
+   - simpler notation constraints
 
 Main caveat across all options:
 

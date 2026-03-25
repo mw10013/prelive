@@ -148,7 +148,7 @@ Several web tools do MIDI → sheet music entirely in-browser:
 ### tools4music.com/tools/midi-to-sheet-music
 
 - 100% client-side processing
-- Parses MIDI in browser, renders with VexFlow
+- Parses MIDI in browser, renders in-browser
 - Download as SVG, PDF, MusicXML
 - Supports multi-track with track selection
 - Auto-detects tempo, time signature, note durations
@@ -164,7 +164,7 @@ Several web tools do MIDI → sheet music entirely in-browser:
 
 - Full notation app in browser
 - MIDI import + export, MusicXML import + export
-- Uses VexFlow for engraving
+- Uses a browser engraving engine
 
 ### Verdict
 

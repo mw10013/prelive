@@ -51,7 +51,7 @@ importers:
         specifier: 0.562.0
         version: 0.562.0(react@19.2.4)
       midi-writer-js:
-        specifier: ^3.2.1
+        specifier: 3.2.1
         version: 3.2.1
       react:
         specifier: ^19.2.4
@@ -65,9 +65,6 @@ importers:
       tw-animate-css:
         specifier: 1.4.0
         version: 1.4.0
-      vexflow:
-        specifier: 5.0.0
-        version: 5.0.0
     devDependencies:
       '@tailwindcss/vite':
         specifier: 4.1.18
@@ -3148,9 +3145,6 @@ packages:
   vary@1.1.2:
     resolution: {integrity: sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==}
     engines: {node: '>= 0.8'}
-
-  vexflow@5.0.0:
-    resolution: {integrity: sha512-rjB7TV4ygKE5Fl3W5OlG+0dHv22CFufUJdMG6oNgvcn0zp34u+sOboZsadQXnF1O3tZ3myXThaUIaLkJlpNM2Q==}
 
   vite-tsconfig-paths@6.1.1:
     resolution: {integrity: sha512-2cihq7zliibCCZ8P9cKJrQBkfgdvcFkOOc3Y02o3GWUDLgqjWsZudaoiuOwO/gzTzy17cS5F7ZPo4bsnS4DGkg==}
@@ -6237,8 +6231,6 @@ snapshots:
   validate-npm-package-name@7.0.2: {}
 
   vary@1.1.2: {}
-
-  vexflow@5.0.0: {}
 
   vite-tsconfig-paths@6.1.1(typescript@5.9.3)(vite@7.3.1(@types/node@24.12.0)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.21.0)(yaml@2.8.3)):
     dependencies:

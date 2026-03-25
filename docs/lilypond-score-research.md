@@ -187,34 +187,7 @@ const svg = await render(lilypondString, { format: "svg" });
 
 **TanStack Start integration**: Create a server function (`createServerFn`) that takes `Note[]`, converts to `.ly`, calls lilynode, returns SVG string. Render SVG inline.
 
-### Option B: VexFlow (client-side, direct API)
-
-**How it works**: JavaScript library that draws music notation directly to SVG/Canvas. No LilyPond involved.
-
-| Aspect     | Detail                            |
-| ---------- | --------------------------------- |
-| Quality    | Good — not as refined as LilyPond |
-| Setup      | `npm install vexflow`             |
-| Output     | SVG or Canvas directly in DOM     |
-| Latency    | Instant (client-side)             |
-| TypeScript | Full types, written in TS         |
-| Version    | 5.0.0 (March 2025)                |
-
-```ts
-import { Factory } from "vexflow";
-const vf = new Factory({
-  renderer: { elementId: "score", width: 800, height: 200 },
-});
-const score = vf.EasyScore();
-const system = score.system();
-system.addStave({ voices: [score.voice(score.notes("C#4/q, B4, A4, G#4"))] });
-vf.draw();
-```
-
-**Pros**: Pure JS, no server dependency, instant render, good TypeScript support.
-**Cons**: Lower engraving quality than LilyPond. API is more programmatic — you build staves/voices manually, not from a text format. Mapping from flat Note[] to VexFlow's structured model (staves, voices, beams, ties) is non-trivial.
-
-### Option C: abcjs (client-side, ABC notation)
+### Option B: abcjs (client-side, ABC notation)
 
 **How it works**: JavaScript library that parses ABC notation text and renders to SVG.
 
@@ -235,19 +208,19 @@ abcjs.renderAbc("score", "X:1\nT:Example\nK:C\nC D E F | G8\n");
 **Pros**: Text-based input (like LilyPond but simpler). Pure JS. Well-maintained. Good for lead sheets, simple melodies. Also has MIDI playback.
 **Cons**: Less capable than LilyPond for complex notation. ABC is simpler than LilyPond — fewer features.
 
-### Option D: OpenSheetMusicDisplay (client-side, MusicXML)
+### Option C: OpenSheetMusicDisplay (client-side, MusicXML)
 
 | Aspect  | Detail                              |
 | ------- | ----------------------------------- |
-| Quality | Good (uses VexFlow internally)      |
+| Quality | Good                                |
 | Setup   | `npm install opensheetmusicdisplay` |
 | Input   | MusicXML (not text — XML format)    |
 | Version | 1.9.7 (Feb 2026)                    |
 
 **Pros**: Full MusicXML support, good for complex scores.
-**Cons**: MusicXML is verbose XML — not pleasant to generate programmatically. Heavy dependency (includes VexFlow).
+**Cons**: MusicXML is verbose XML — not pleasant to generate programmatically. Heavy dependency.
 
-### Option E: Verovio (client-side, MEI format)
+### Option D: Verovio (client-side, MEI format)
 
 | Aspect  | Detail                             |
 | ------- | ---------------------------------- |
@@ -258,7 +231,7 @@ abcjs.renderAbc("score", "X:1\nT:Example\nK:C\nC D E F | G8\n");
 
 **Cons**: MEI is academic/research-focused XML. Heavy for our use case.
 
-### Option F: LilyPond WASM in browser?
+### Option E: LilyPond WASM in browser?
 
 **Does not exist.** LilyPond is written in C++/Guile Scheme and has never been compiled to WebAssembly. The old WebLily.net ran LilyPond server-side and served SVG. LilyBin used Docker containers. There is no browser-native LilyPond.
 
@@ -269,21 +242,19 @@ abcjs.renderAbc("score", "X:1\nT:Example\nK:C\nC D E F | G8\n");
 | Approach                   | Quality | Complexity | Latency | Server Dep? | Fit for our case                     |
 | -------------------------- | ------- | ---------- | ------- | ----------- | ------------------------------------ |
 | **A: LilyPond + lilynode** | ★★★★★   | Medium     | ~200ms  | Yes         | Best quality, fits server fn pattern |
-| **B: VexFlow**             | ★★★☆☆   | High       | Instant | No          | Programmatic API, complex mapping    |
-| **C: abcjs**               | ★★★☆☆   | Low        | Instant | No          | Simple text format, easiest path     |
-| **D: OSMD**                | ★★★★☆   | Medium     | Instant | No          | MusicXML is verbose to generate      |
-| **E: Verovio**             | ★★★★☆   | High       | Instant | No          | Overkill for MIDI notes              |
+| **B: abcjs**               | ★★★☆☆   | Low        | Instant | No          | Simple text format, easiest path     |
+| **C: OSMD**                | ★★★★☆   | Medium     | Instant | No          | MusicXML is verbose to generate      |
+| **D: Verovio**             | ★★★★☆   | High       | Instant | No          | Overkill for MIDI notes              |
 
 ---
 
 ## My Recommendation
 
-**For a quick, practical integration**: **abcjs** or **VexFlow**
+**For a quick, practical integration**: **abcjs**
 
-Both are pure JS, no server dependency, instant rendering, and can be dropped into the index route below the NoteTable.
+Pure JS, no server dependency, instant rendering, and can be dropped into the index route below the NoteTable.
 
 - **abcjs** is closest to the LilyPond approach (text-based notation). We'd convert `Note[]` → ABC text → `renderAbc()` → SVG. ABC notation is simpler than LilyPond but handles melody/chords well. Easy to generate programmatically.
-- **VexFlow** gives more control but requires building the score model (staves, voices, notes) programmatically rather than from text.
 
 **For best quality**: **LilyPond CLI via lilynode**
 
@@ -325,7 +296,7 @@ The score display would go in `src/routes/index.tsx` below the NoteTable, gated 
 A `<ScoreDisplay>` component would:
 
 1. Take `notes: Note[]` as prop
-2. Convert to the chosen format (ABC text / LilyPond text / VexFlow API calls)
+2. Convert to the chosen format (ABC text / LilyPond text)
 3. Render to SVG
 4. Re-render on prop changes (React re-render when notes state changes)
 
@@ -336,11 +307,11 @@ A `<ScoreDisplay>` component would:
 | #   | Question                       | Notes                                                                                                                                   |
 | --- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
 | 1   | Single track or multi-track?   | Current data is one clip = one track. Multiple tracks would need separate staves.                                                       |
-| 2   | Real-time preview as you edit? | If client-side (abcjs/VexFlow), yes instant. If server-side (lilynode), debounced re-render.                                            |
+| 2   | Real-time preview as you edit? | If client-side (abcjs), yes instant. If server-side (lilynode), debounced re-render.                                                   |
 | 3   | Chord detection?               | Need to group simultaneous notes. How aggressive? Exact `start_time` match, or within epsilon?                                          |
 | 4   | Quantization strategy?         | LilyPond needs standard durations. ABC is more flexible but still limited. How to handle triplet timing etc.?                           |
 | 5   | Key signature / accidentals?   | Notes are raw MIDI pitches. LilyPond can auto-detect key or we can force it. For ABC, sharps/flats are explicit (`^C` = C#, `_D` = Db). |
-| 6   | Playback?                      | abcjs has built-in MIDI playback. VexFlow needs external MIDI. LilyPond SVG has no playback.                                            |
+| 6   | Playback?                      | abcjs has built-in MIDI playback. LilyPond SVG has no playback.                                                                          |
 | 7   | Which library?                 | **Need your input** — see recommendation above.                                                                                         |
 
 ---
@@ -350,7 +321,6 @@ A `<ScoreDisplay>` component would:
 - LilyPond docs: `refs/lilypond/` (not downloaded — web only)
 - LilyPond notation reference: https://lilypond.org/doc/v2.24/Documentation/notation/
 - lilynode: https://www.npmjs.com/package/lilynode
-- VexFlow: https://www.vexflow.com/ / https://github.com/vexflow/vexflow
 - abcjs: https://www.abcjs.net/ / https://github.com/paulrosen/abcjs
 - OSMD: https://opensheetmusicdisplay.org/
 - Verovio: https://www.verovio.org/

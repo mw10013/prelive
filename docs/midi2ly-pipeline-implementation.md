@@ -2,7 +2,7 @@
 
 Date: 2026-03-24
 
-Goal: Document the implementation path for Pipeline 1 (midi2ly + LilyPond) using Effect v4 idioms for Node operations, enabling side-by-side operation with existing VexFlow renderer.
+Goal: Document the implementation path for Pipeline 1 (midi2ly + LilyPond) using Effect v4 idioms for Node operations.
 
 ---
 
@@ -435,7 +435,7 @@ If midi2ly output is poor quality:
 | lilypond        | 200-500ms  | SVG rendering       |
 | **Total**       | **~500ms** | Server-side only    |
 
-**Caching strategy**: VexFlow is instant (client). LilyPond is server-side with ~500ms latency but higher fidelity. Consider caching rendered SVGs keyed by note content hash.
+**Caching strategy**: LilyPond is server-side with ~500ms latency. Consider caching rendered SVGs keyed by note content hash.
 
 ---
 
@@ -448,10 +448,8 @@ src/
 │   │   ├── renderer.ts      # LilyPondRenderer service
 │   │   ├── midi.ts          # notesToMidiFile, quantizeNotes
 │   │   └── types.ts         # PlatformError re-exports
-│   └── vexflow/
-│       └── render-score.ts  # Existing VexFlow renderer
 ├── components/
-│   └── ScoreDisplay.tsx     # Side-by-side tabs
+│   └── ScoreDisplay.tsx     # LilyPond render control
 └── routes/
     └── api/
         └── score/
