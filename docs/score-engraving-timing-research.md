@@ -177,24 +177,129 @@ The issue is unlikely to be in the `start_time → startTick` mapping (it is dir
 
 ---
 
+## Current Constraints from Annotations
+
+1) Overlaps are expected in the note list.
+2) The note list can contain chords.
+
+These constraints make `midi2ly` voice-splitting and rest insertion more likely, since overlaps are normal input rather than data errors.
+
+---
+
+## Intermediate Files: What Gets Written, Where, and Lifecycle
+
+### midi2ly stage
+
+`midi2ly` is invoked inside a scoped temp directory with prefix `midi2ly-`. The renderer writes `input.mid`, runs `midi2ly`, and reads `output.ly`.
+
+```
+const tmpDir = yield* fs.makeTempDirectoryScoped({
+  prefix: "midi2ly-",
+});
+const tmpMidi = path.join(tmpDir, "input.mid");
+const tmpLy = path.join(tmpDir, "output.ly");
+
+yield* fs.writeFile(tmpMidi, midiBuffer);
+
+yield* spawner.string(
+  ChildProcess.make("midi2ly", [
+    "--duration-quant=16",
+    "--start-quant=16",
+    "--allow-tuplet=8*2/3",
+    "--allow-tuplet=16*3/2",
+    "-o",
+    tmpLy,
+    tmpMidi,
+  ]),
+);
+
+return yield* fs.readFileString(tmpLy);
+```
+
+Source: `src/lib/lilypond/renderer.ts:35`
+
+### lilypond stage
+
+`lilypond` is invoked inside a scoped temp directory with prefix `lilypond-`. The renderer writes `score.ly`, invokes LilyPond, then reads `score.svg`.
+
+```
+const tmpDir = yield* fs.makeTempDirectoryScoped({
+  prefix: "lilypond-",
+});
+const tmpLy = path.join(tmpDir, "score.ly");
+const outputBase = path.join(tmpDir, "score");
+
+yield* fs.writeFileString(tmpLy, lyContent);
+
+yield* spawner.string(
+  ChildProcess.make("lilypond", [
+    "-dbackend=svg",
+    "-o",
+    outputBase,
+    tmpLy,
+  ]),
+);
+
+return yield* fs.readFile(`${outputBase}.svg`);
+```
+
+Source: `src/lib/lilypond/renderer.ts:65`
+
+### Temp directory location
+
+`makeTempDirectoryScoped` uses the OS temp directory by default (`OS.tmpdir()`), unless a specific directory is provided.
+
+```
+const directory = typeof options?.directory === "string"
+  ? Path.join(options.directory, ".")
+  : OS.tmpdir();
+```
+
+Source: `refs/effect4/packages/platform-node-shared/src/NodeFileSystem.ts:124`
+
+### Deletion behavior
+
+`makeTempDirectoryScoped` uses `acquireRelease` and removes the directory on scope exit with `recursive: true`.
+
+```
+return (options) =>
+  Effect.acquireRelease(
+    makeDirectory(options),
+    (directory) => Effect.orDie(removeDirectory(directory, { recursive: true }))
+  )
+```
+
+Source: `refs/effect4/packages/platform-node-shared/src/NodeFileSystem.ts:160`
+
+Summary: the intermediate files (`input.mid`, `output.ly`, `score.ly`, `score.svg`) live under OS temp directories and are deleted when the Effect scope ends. They are not preserved by default.
+
+---
+
+## Logging or Persisting `.ly` for Debugging
+
+Right now the `.ly` text only exists in memory (`lyContent`) and the temp directory is deleted at scope exit. If we want to inspect `.ly` output:
+
+1) Log `lyContent` to `logs/server.log` before calling `lilypond`.
+2) Or write the `.ly` file to a fixed path outside the scoped temp dir.
+
+Both require code changes in `src/lib/lilypond/renderer.ts`.
+
+---
+
 ## Open Questions for Next Iteration
 
-1) Do we want a single-voice engraving that preserves timeline placement even if notes overlap?
+1) Do we want `midi2ly` to preserve overlapping timing exactly (polyphonic voices), or do we want to coerce overlaps into notation patterns like chords or ties for a simpler visual?
 
-The note list can have chords in it. I don't know what you mean by single-voice engraving since we can have chords.
+chords and ties.
 
-2) Are overlaps expected in the UI data, or should we treat them as chords or ties?
+2) Should we capture `.ly` and `.mid` artifacts per render (e.g., configurable debug mode) to inspect voicing decisions?
 
-yes, overlaps are expected in the note list. And the note list can contain chords.
-
-3) Should we inspect and keep the generated `.ly` as an intermediate artifact for debugging?
-
-Yes, that would be good. Research the pipeline and explain what intermediate files are generated, where are they stored, are they deleted? we might also consider logging their contents so we can see them in the server log. 
+yes. keep the current temp dir set up/tear down, but also capture .ly and .mid and any other file we need to well known location. maybe in the logs dir. should always have the same name so new files are not created without bound.
 
 ---
 
 ## Concrete Next Checks (No Code Changes Yet)
 
 1) Capture the `.ly` output for the four-note example and see how `midi2ly` is voicing it.
-2) Compare with a hand-authored `.ly` that forces a single voice and explicit rests.
+2) Compare with a hand-authored `.ly` that preserves the intended beat placement and chord handling.
 3) Decide if the desired output is literal timing fidelity or notation-friendly engraving.
