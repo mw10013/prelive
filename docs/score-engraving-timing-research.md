@@ -275,31 +275,66 @@ Summary: the intermediate files (`input.mid`, `output.ly`, `score.ly`, `score.sv
 
 ---
 
-## Logging or Persisting `.ly` for Debugging
+## Debug Artifacts Written to `logs/`
 
-Right now the `.ly` text only exists in memory (`lyContent`) and the temp directory is deleted at scope exit. If we want to inspect `.ly` output:
+Debug artifacts are now written to stable paths on every render:
 
-1) Log `lyContent` to `logs/server.log` before calling `lilypond`.
-2) Or write the `.ly` file to a fixed path outside the scoped temp dir.
+- `logs/score-debug.mid`
+- `logs/score-debug.ly`
+- `logs/score-debug.svg`
 
-Both require code changes in `src/lib/lilypond/renderer.ts`.
+They are overwritten on each render (no unbounded file growth), while the temp dirs still use scoped create/cleanup.
+
+```
+const debugDir = path.join(process.cwd(), "logs");
+const debugMidiPath = path.join(debugDir, "score-debug.mid");
+const debugLyPath = path.join(debugDir, "score-debug.ly");
+const debugSvgPath = path.join(debugDir, "score-debug.svg");
+
+yield* fs.writeFile(debugMidiPath, midiBuffer).pipe(
+  Effect.mapError(
+    (e) => new LilyPondError({ message: "debug midi write failed", cause: e }),
+  ),
+);
+
+const lyContent = yield* midiToLy(midiBuffer).pipe(
+  Effect.mapError(
+    (e) => new LilyPondError({ message: "midi2ly failed", cause: e }),
+  ),
+);
+
+yield* fs.writeFileString(debugLyPath, lyContent).pipe(
+  Effect.mapError(
+    (e) => new LilyPondError({ message: "debug ly write failed", cause: e }),
+  ),
+);
+
+const svgBuffer = yield* lyToSvg(lyContent).pipe(
+  Effect.mapError(
+    (e) => new LilyPondError({ message: "lilypond failed", cause: e }),
+  ),
+);
+
+yield* fs.writeFile(debugSvgPath, svgBuffer).pipe(
+  Effect.mapError(
+    (e) => new LilyPondError({ message: "debug svg write failed", cause: e }),
+  ),
+);
+```
+
+Source: `src/lib/lilypond/renderer.ts:90`
 
 ---
 
-## Open Questions for Next Iteration
+## Decisions from Annotations
 
-1) Do we want `midi2ly` to preserve overlapping timing exactly (polyphonic voices), or do we want to coerce overlaps into notation patterns like chords or ties for a simpler visual?
-
-chords and ties.
-
-2) Should we capture `.ly` and `.mid` artifacts per render (e.g., configurable debug mode) to inspect voicing decisions?
-
-yes. keep the current temp dir set up/tear down, but also capture .ly and .mid and any other file we need to well known location. maybe in the logs dir. should always have the same name so new files are not created without bound.
+1) Prefer chords and ties over strict polyphonic timing preservation.
+2) Capture `.mid`, `.ly`, and `.svg` per render to fixed paths under `logs/`.
 
 ---
 
-## Concrete Next Checks (No Code Changes Yet)
+## Concrete Next Checks
 
-1) Capture the `.ly` output for the four-note example and see how `midi2ly` is voicing it.
+1) Inspect `logs/score-debug.ly` for the four-note example and see how `midi2ly` is voicing it.
 2) Compare with a hand-authored `.ly` that preserves the intended beat placement and chord handling.
-3) Decide if the desired output is literal timing fidelity or notation-friendly engraving.
+3) Inspect `logs/score-debug.mid` alongside the `.ly` to confirm timing alignment pre-conversion.

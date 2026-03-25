@@ -92,6 +92,16 @@ export class LilyPondRenderer extends ServiceMap.Service<
       ) {
         const quantized = quantizeNotes(notes);
         const midiBuffer = notesToMidiFile(quantized);
+        const debugDir = path.join(process.cwd(), "logs");
+        const debugMidiPath = path.join(debugDir, "score-debug.mid");
+        const debugLyPath = path.join(debugDir, "score-debug.ly");
+        const debugSvgPath = path.join(debugDir, "score-debug.svg");
+
+        yield* fs.writeFile(debugMidiPath, midiBuffer).pipe(
+          Effect.mapError(
+            (e) => new LilyPondError({ message: "debug midi write failed", cause: e }),
+          ),
+        );
 
         const lyContent = yield* midiToLy(midiBuffer).pipe(
           Effect.mapError(
@@ -99,9 +109,21 @@ export class LilyPondRenderer extends ServiceMap.Service<
           ),
         );
 
+        yield* fs.writeFileString(debugLyPath, lyContent).pipe(
+          Effect.mapError(
+            (e) => new LilyPondError({ message: "debug ly write failed", cause: e }),
+          ),
+        );
+
         const svgBuffer = yield* lyToSvg(lyContent).pipe(
           Effect.mapError(
             (e) => new LilyPondError({ message: "lilypond failed", cause: e }),
+          ),
+        );
+
+        yield* fs.writeFile(debugSvgPath, svgBuffer).pipe(
+          Effect.mapError(
+            (e) => new LilyPondError({ message: "debug svg write failed", cause: e }),
           ),
         );
 
