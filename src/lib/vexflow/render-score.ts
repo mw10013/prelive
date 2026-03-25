@@ -68,16 +68,24 @@ export async function renderScore(
       }
       stave.setContext(ctx).draw();
 
+      let beams: Beam[] = [];
+      if (staveNotes.length > 1) {
+        beams = Beam.generateBeams(staveNotes);
+        // Ensure beam property is set on each note
+        beams.forEach(beam => {
+          beam.getNotes().forEach((note: any) => {
+            if (!note.beam) {
+              note.setBeam(beam);
+            }
+          });
+        });
+        console.log("Beam generated for notes:", staveNotes.map((n: any) => ({ hasBeam: !!n.beam, duration: n.duration, isRest: n.isRest() })));
+      }
+
       Formatter.FormatAndDraw(ctx, stave, staveNotes);
 
-      const beamable = staveNotes.filter(
-        (n) => !n.isRest() && n.getTicks().value() <= 4 * 480,
-      );
-      if (beamable.length > 1) {
-        const beams = Beam.generateBeams(beamable);
-        for (const beam of beams) {
-          beam.setContext(ctx).draw();
-        }
+      for (const beam of beams) {
+        beam.setContext(ctx).draw();
       }
     }
   }
