@@ -8,6 +8,7 @@ import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
 
 import { notesToMidiFile, quantizeNotes } from "./midi";
+import { notesToLilyPond } from "./score";
 
 class LilyPondError extends Schema.TaggedErrorClass<LilyPondError>()(
   "LilyPondError",
@@ -31,36 +32,6 @@ export class LilyPondRenderer extends ServiceMap.Service<
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const spawner = yield* ChildProcessSpawner;
-
-      const midiToLy = Effect.fn("midiToLy")(function* (
-        midiBuffer: Uint8Array,
-      ) {
-        return yield* Effect.scoped(
-          Effect.gen(function* () {
-            const tmpDir = yield* fs.makeTempDirectoryScoped({
-              prefix: "midi2ly-",
-            });
-            const tmpMidi = path.join(tmpDir, "input.mid");
-            const tmpLy = path.join(tmpDir, "output.ly");
-
-            yield* fs.writeFile(tmpMidi, midiBuffer);
-
-            yield* spawner.string(
-              ChildProcess.make("midi2ly", [
-                "--duration-quant=16",
-                "--start-quant=16",
-                "--allow-tuplet=8*2/3",
-                "--allow-tuplet=16*3/2",
-                "-o",
-                tmpLy,
-                tmpMidi,
-              ]),
-            );
-
-            return yield* fs.readFileString(tmpLy);
-          }),
-        );
-      });
 
       const lyToSvg = Effect.fn("lyToSvg")(function* (lyContent: string) {
         return yield* Effect.scoped(
@@ -90,8 +61,7 @@ export class LilyPondRenderer extends ServiceMap.Service<
       const renderToSvg = Effect.fn("LilyPondRenderer.renderToSvg")(function* (
         notes: readonly Note[],
       ) {
-        const quantized = quantizeNotes(notes);
-        const midiBuffer = notesToMidiFile(quantized);
+        const midiBuffer = notesToMidiFile(quantizeNotes(notes));
         const debugDir = path.join(process.cwd(), "logs");
         const debugMidiPath = path.join(debugDir, "score-debug.mid");
         const debugLyPath = path.join(debugDir, "score-debug.ly");
@@ -103,11 +73,7 @@ export class LilyPondRenderer extends ServiceMap.Service<
           ),
         );
 
-        const lyContent = yield* midiToLy(midiBuffer).pipe(
-          Effect.mapError(
-            (e) => new LilyPondError({ message: "midi2ly failed", cause: e }),
-          ),
-        );
+        const lyContent = notesToLilyPond(notes);
 
         yield* fs.writeFileString(debugLyPath, lyContent).pipe(
           Effect.mapError(

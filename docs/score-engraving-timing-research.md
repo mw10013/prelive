@@ -13,7 +13,7 @@ The UI shows notes with `start_time` and `duration` in beats. The expected inter
 Current pipeline:
 
 ```
-Note[] → MidiWriterJS → .mid → midi2ly → .ly → lilypond --svg → .svg
+Note[] → LilyPond text (direct) → lilypond --svg → .svg
 ```
 
 ---
@@ -88,22 +88,16 @@ export const quantizeNotes = (
 
 Source: `src/lib/lilypond/midi.ts:47`
 
-### midi2ly/lilypond used in renderer
+### LilyPond is generated directly
 
-`renderToSvg` uses the quantized notes, then runs `midi2ly`, then `lilypond`.
+`renderToSvg` calls `notesToLilyPond(notes)` and sends that to `lilypond`.
 
 ```
 const renderToSvg = Effect.fn("LilyPondRenderer.renderToSvg")(function* (
   notes: readonly Note[],
 ) {
-  const quantized = quantizeNotes(notes);
-  const midiBuffer = notesToMidiFile(quantized);
-
-  const lyContent = yield* midiToLy(midiBuffer).pipe(
-    Effect.mapError(
-      (e) => new LilyPondError({ message: "midi2ly failed", cause: e }),
-    ),
-  );
+  const midiBuffer = notesToMidiFile(quantizeNotes(notes));
+  const lyContent = notesToLilyPond(notes);
 
   const svgBuffer = yield* lyToSvg(lyContent).pipe(
     Effect.mapError(
@@ -116,6 +110,50 @@ const renderToSvg = Effect.fn("LilyPondRenderer.renderToSvg")(function* (
 ```
 
 Source: `src/lib/lilypond/renderer.ts:90`
+
+### Direct LilyPond voices and chords
+
+The generator quantizes, groups notes with the same start+duration into chord events, then assigns non-overlapping events to voices. Each voice emits rests for gaps, and ties only when a single duration must be split.
+
+```
+const events = buildEvents(notes, config.gridSize);
+const voices = assignVoices(events);
+const voiceTokens = voices.map((voice) =>
+  voiceToTokens(voice.events, roundedEnd).join(" "),
+);
+const body = voiceTokens.length > 1
+  ? `<< ${voiceTokens
+    .map((line, index) => {
+      const command = voiceCommands[index] ?? "\\voiceOne";
+      return `{ ${command} ${line} }`;
+    })
+    .join(" \\\\ ")} >>`
+  : (voiceTokens[0] ?? "r1");
+```
+
+Source: `src/lib/lilypond/score.ts:100`
+
+### Proportional spacing for beat alignment
+
+To align horizontal spacing with timing, the generator sets proportional notation and strict note spacing.
+
+```
+\set Score.proportionalNotationDuration = #1/16
+\override Score.SpacingSpanner.strict-note-spacing = ##t
+```
+
+Source: `src/lib/lilypond/score.ts:179`
+
+LilyPond reference shows `\set Score.proportionalNotationDuration` for proportional spacing:
+
+```
+\new RhythmicStaff {
+  \set Score.proportionalNotationDuration = #1/16
+  \rhythm
+}
+```
+
+Source: `refs/lilypond/Documentation/en/notation/spacing.itely:3715`
 
 ### MidiWriterJS semantics for `startTick`
 
@@ -156,24 +194,23 @@ In 4/4, `start_time = 1` is beat 2. With `ticksPerBeat = 480`, note 3 starts at 
 
 ## Likely Causes of the Engraving Mismatch
 
-1) Overlap-triggered voice splitting in `midi2ly`
-   - Note 1 spans 0 → 0.75 while note 2 starts at 0.25 and ends at 0.5.
-   - Overlaps often cause `midi2ly` to split into multiple voices or insert rests in unexpected places.
-   - This can make later notes appear visually offset even if their absolute time is correct.
+1) Voice assignment may not match musical intent
+   - `assignVoices` places overlapping events into separate voices by earliest-available rule.
+   - If the intended melody should stay in the top voice, pitch ordering may need tuning.
 
-2) Quantization and duration rendering choices in `midi2ly`
-   - We quantize to 1/16 before MIDI export.
-   - `midi2ly` also has its own quantization rules and may choose dotted notes or ties that change beaming and voice structure.
+2) Duration splitting is greedy
+   - `splitDuration` decomposes a duration into dotted/undotted tokens.
+   - This can change visual grouping even when timing is correct.
 
-3) MIDI to LilyPond conversion is lossy for polyphonic timing
-   - `midi2ly` is optimized for transcription, not exact positional engraving.
-   - It may reorganize note groupings to produce a “clean” score rather than preserving the original piano-roll layout.
+3) Chord grouping is only for identical start+duration
+   - Notes that start together but have different durations are split across voices.
+   - That can look “off” if you expect chord ties in a single voice.
 
 ---
 
 ## What This Suggests
 
-The issue is unlikely to be in the `start_time → startTick` mapping (it is direct and absolute). The mismatch is more likely introduced during `midi2ly`’s analysis of overlapping notes, which can reshuffle voices and change where notes appear in the rendered score.
+The issue is unlikely to be in the `start_time → startTick` mapping. The mismatch is more likely introduced by the direct LilyPond voice assignment and duration splitting in `notesToLilyPond`.
 
 ---
 
@@ -182,41 +219,11 @@ The issue is unlikely to be in the `start_time → startTick` mapping (it is dir
 1) Overlaps are expected in the note list.
 2) The note list can contain chords.
 
-These constraints make `midi2ly` voice-splitting and rest insertion more likely, since overlaps are normal input rather than data errors.
+These constraints mean overlap handling must balance chords, ties, and voice separation without losing beat placement.
 
 ---
 
 ## Intermediate Files: What Gets Written, Where, and Lifecycle
-
-### midi2ly stage
-
-`midi2ly` is invoked inside a scoped temp directory with prefix `midi2ly-`. The renderer writes `input.mid`, runs `midi2ly`, and reads `output.ly`.
-
-```
-const tmpDir = yield* fs.makeTempDirectoryScoped({
-  prefix: "midi2ly-",
-});
-const tmpMidi = path.join(tmpDir, "input.mid");
-const tmpLy = path.join(tmpDir, "output.ly");
-
-yield* fs.writeFile(tmpMidi, midiBuffer);
-
-yield* spawner.string(
-  ChildProcess.make("midi2ly", [
-    "--duration-quant=16",
-    "--start-quant=16",
-    "--allow-tuplet=8*2/3",
-    "--allow-tuplet=16*3/2",
-    "-o",
-    tmpLy,
-    tmpMidi,
-  ]),
-);
-
-return yield* fs.readFileString(tmpLy);
-```
-
-Source: `src/lib/lilypond/renderer.ts:35`
 
 ### lilypond stage
 
@@ -271,7 +278,7 @@ return (options) =>
 
 Source: `refs/effect4/packages/platform-node-shared/src/NodeFileSystem.ts:160`
 
-Summary: the intermediate files (`input.mid`, `output.ly`, `score.ly`, `score.svg`) live under OS temp directories and are deleted when the Effect scope ends. They are not preserved by default.
+Summary: the intermediate files (`score.ly`, `score.svg`) live under OS temp directories and are deleted when the Effect scope ends. They are not preserved by default.
 
 ---
 
@@ -297,11 +304,7 @@ yield* fs.writeFile(debugMidiPath, midiBuffer).pipe(
   ),
 );
 
-const lyContent = yield* midiToLy(midiBuffer).pipe(
-  Effect.mapError(
-    (e) => new LilyPondError({ message: "midi2ly failed", cause: e }),
-  ),
-);
+const lyContent = notesToLilyPond(notes);
 
 yield* fs.writeFileString(debugLyPath, lyContent).pipe(
   Effect.mapError(
@@ -335,6 +338,6 @@ Source: `src/lib/lilypond/renderer.ts:90`
 
 ## Concrete Next Checks
 
-1) Inspect `logs/score-debug.ly` for the four-note example and see how `midi2ly` is voicing it.
+1) Inspect `logs/score-debug.ly` for the four-note example and verify voice assignment and durations.
 2) Compare with a hand-authored `.ly` that preserves the intended beat placement and chord handling.
-3) Inspect `logs/score-debug.mid` alongside the `.ly` to confirm timing alignment pre-conversion.
+3) Inspect `logs/score-debug.mid` alongside the `.ly` to confirm timing alignment pre-render.

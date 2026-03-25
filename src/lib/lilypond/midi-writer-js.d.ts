@@ -17,22 +17,24 @@ declare module "midi-writer-js" {
     delta?: number;
   }
 
-  class NoteEvent {
-    constructor(fields: NoteEventFields);
-  }
+  type NoteEvent = object;
+  type TempoEvent = object;
+  type TimeSignatureEvent = object;
 
-  class TempoEvent {
-    constructor(fields: TempoEventFields);
-  }
+  type NoteEventConstructor = new (fields: NoteEventFields) => NoteEvent;
 
-  class TimeSignatureEvent {
-    constructor(
-      numerator: number,
-      denominator: number,
-      midiclockspertick: number,
-      notespermidiclock: number,
-    );
-  }
+  type TempoEventConstructor = new (fields: TempoEventFields) => TempoEvent;
+
+  type TimeSignatureEventConstructor = new (
+    numerator: number,
+    denominator: number,
+    midiclockspertick: number,
+    notespermidiclock: number,
+  ) => TimeSignatureEvent;
+
+  const NoteEvent: NoteEventConstructor;
+  const TempoEvent: TempoEventConstructor;
+  const TimeSignatureEvent: TimeSignatureEventConstructor;
 
   class Track {
     addEvent(event: object | object[]): Track;
