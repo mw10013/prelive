@@ -1,4 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
+
 import type { ReactNode } from "react";
 
 import {
@@ -10,6 +11,7 @@ import {
 
 import { DefaultCatchBoundary } from "@/components/default-catch-boundary";
 import { NotFound } from "@/components/not-found";
+
 import appCss from "../styles.css?url";
 
 export const Route = createRootRouteWithContext<{

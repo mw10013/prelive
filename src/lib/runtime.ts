@@ -1,7 +1,10 @@
 import { ConfigProvider, Layer, ManagedRuntime } from "effect";
 
+import { LilyPondRenderer } from "@/lib/lilypond/renderer";
+
 const baseLayer = Layer.mergeAll(
   ConfigProvider.layer(ConfigProvider.fromEnv()),
+  LilyPondRenderer.layer,
 );
 
 const appLayer = baseLayer;

@@ -350,17 +350,18 @@ export const ClipWithNotes = Schema.Struct({
 
 All resolved.
 
-| # | Question | Decision |
-|---|---|---|
-| 1 | Add note UI | Click on empty row for now. Text fields for each. |
-| 2 | Pitch display | Raw number (0–127). |
-| 3 | Sort | Not applicable — notes come sorted from server (start_time asc, pitch asc). This is music data. |
+| #   | Question      | Decision                                                                                        |
+| --- | ------------- | ----------------------------------------------------------------------------------------------- |
+| 1   | Add note UI   | Click on empty row for now. Text fields for each.                                               |
+| 2   | Pitch display | Raw number (0–127).                                                                             |
+| 3   | Sort          | Not applicable — notes come sorted from server (start_time asc, pitch asc). This is music data. |
 
 ### TanStack Start / createServerFn
 
 Project **is** already using TanStack Start (`StartClient` in `main.tsx`). `createServerFn` from `@tanstack/react-start` works alongside `createFileRoute` — same file or separate file. No pre-work needed.
 
 Pattern:
+
 ```ts
 import { createFileRoute } from '@tanstack/react-router'
 import { createServerFn } from '@tanstack/react-start'

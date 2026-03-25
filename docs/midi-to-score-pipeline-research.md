@@ -184,16 +184,18 @@ The most flexible approach: build our own `Note[] → MIDI → score` pipeline.
 Use **MidiWriterJS** (npm: `midi-writer-js`) to create a MIDI file from our note data.
 
 ```ts
-import MidiWriter from 'midi-writer-js'
+import MidiWriter from "midi-writer-js";
 
-const track = new MidiWriter.Track()
-track.addEvent(new MidiWriter.NoteEvent({
-  pitch: ['C4', 'E4', 'G4'],
-  duration: '4',
-}))
+const track = new MidiWriter.Track();
+track.addEvent(
+  new MidiWriter.NoteEvent({
+    pitch: ["C4", "E4", "G4"],
+    duration: "4",
+  }),
+);
 
-const write = new MidiWriter.Writer(track)
-const midiBuffer = write.dataUri() // or write.buildFile()
+const write = new MidiWriter.Writer(track);
+const midiBuffer = write.dataUri(); // or write.buildFile()
 ```
 
 Key advantage: we control the quantization, track assignment, and time signature before it hits the engraver.
@@ -202,21 +204,21 @@ Key advantage: we control the quantization, track assignment, and time signature
 
 Pipeline options:
 
-| Converter | Input | Output | Notes |
-|-----------|-------|--------|-------|
-| `midi2ly` (built-in) | MIDI | `.ly` | Quick, rough quantization |
-| `gin66/midi2ly` | MIDI | `.ly` | Better, repeat detection |
-| `mscore -o out.musicxml` | MIDI | `.musicxml` | Best quantization |
-| Write our own converter | MIDI | MusicXML/ABC | Full control, high effort |
+| Converter                | Input | Output       | Notes                     |
+| ------------------------ | ----- | ------------ | ------------------------- |
+| `midi2ly` (built-in)     | MIDI  | `.ly`        | Quick, rough quantization |
+| `gin66/midi2ly`          | MIDI  | `.ly`        | Better, repeat detection  |
+| `mscore -o out.musicxml` | MIDI  | `.musicxml`  | Best quantization         |
+| Write our own converter  | MIDI  | MusicXML/ABC | Full control, high effort |
 
 ### Step 3: Engrave to image
 
-| Engraver | Input | Output | Quality |
-|----------|-------|--------|---------|
-| `lilypond --svg` | `.ly` | `.svg` | Excellent |
-| `lilypond --png` | `.ly` | `.png` | Excellent |
-| `verovio` | `.musicxml` | `.svg` | Excellent |
-| `mscore -o out.svg` | `.mid` | `.svg` | Very good |
+| Engraver            | Input       | Output | Quality   |
+| ------------------- | ----------- | ------ | --------- |
+| `lilypond --svg`    | `.ly`       | `.svg` | Excellent |
+| `lilypond --png`    | `.ly`       | `.png` | Excellent |
+| `verovio`           | `.musicxml` | `.svg` | Excellent |
+| `mscore -o out.svg` | `.mid`      | `.svg` | Very good |
 
 ---
 
@@ -300,22 +302,24 @@ If `midi2ly` output is too rough, escalate to Pipeline 4 (gin66/midi2ly) or Pipe
 Example mapping from our Note schema:
 
 ```ts
-import MidiWriter from 'midi-writer-js'
+import MidiWriter from "midi-writer-js";
 
 function notesToMidiFile(notes: Note[], ticksPerBeat: number = 480): Buffer {
-  const track = new MidiWriter.Track()
-  track.setTempo(120)
+  const track = new MidiWriter.Track();
+  track.setTempo(120);
 
   for (const note of notes) {
-    track.addEvent(new MidiWriter.NoteEvent({
-      pitch: [midiToNoteName(note.pitch)],
-      duration: `T${Math.round(note.duration * ticksPerBeat)}`,
-      velocity: note.velocity,
-      startTick: Math.round(note.start_time * ticksPerBeat),
-    }))
+    track.addEvent(
+      new MidiWriter.NoteEvent({
+        pitch: [midiToNoteName(note.pitch)],
+        duration: `T${Math.round(note.duration * ticksPerBeat)}`,
+        velocity: note.velocity,
+        startTick: Math.round(note.start_time * ticksPerBeat),
+      }),
+    );
   }
 
-  return Buffer.from(new MidiWriter.Writer(track).buildFile())
+  return Buffer.from(new MidiWriter.Writer(track).buildFile());
 }
 ```
 

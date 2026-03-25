@@ -1,8 +1,8 @@
-import { Schema } from "effect"
-import { createServerFn } from "@tanstack/react-start"
+import { createServerFn } from "@tanstack/react-start";
+import { Schema } from "effect";
 
-import * as Domain from "@/lib/Domain"
-import { gql } from "@/lib/gql"
+import * as Domain from "@/lib/Domain";
+import { gql } from "@/lib/gql";
 
 export const readClip = createServerFn({ method: "GET" }).handler(async () => {
   return gql(
@@ -18,14 +18,14 @@ export const readClip = createServerFn({ method: "GET" }).handler(async () => {
         }),
       }),
     }),
-  )
-})
+  );
+});
 
 interface WriteNotesInput {
-  clipId: number
-  newNotes: Domain.NoteInput[]
-  modifiedNotes: Domain.NoteInput[]
-  removedNoteIds: number[]
+  clipId: number;
+  newNotes: Domain.NoteInput[];
+  modifiedNotes: Domain.NoteInput[];
+  removedNoteIds: number[];
 }
 
 export const writeNotes = createServerFn({ method: "POST" })
@@ -41,7 +41,7 @@ export const writeNotes = createServerFn({ method: "POST" })
             clip_add_new_notes: Schema.Struct({ id: Schema.Number }),
           }),
           { id: clipId, notes: { notes: newNotes } },
-        )
+        );
       }
       if (modifiedNotes.length > 0) {
         await gql(
@@ -52,7 +52,7 @@ export const writeNotes = createServerFn({ method: "POST" })
             clip_apply_note_modifications: Schema.Struct({ id: Schema.Number }),
           }),
           { id: clipId, notes: { notes: modifiedNotes } },
-        )
+        );
       }
       if (removedNoteIds.length > 0) {
         await gql(
@@ -63,7 +63,7 @@ export const writeNotes = createServerFn({ method: "POST" })
             clip_remove_notes_by_id: Schema.Struct({ id: Schema.Number }),
           }),
           { id: clipId, ids: removedNoteIds },
-        )
+        );
       }
     },
-  )
+  );

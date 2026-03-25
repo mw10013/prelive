@@ -10,13 +10,13 @@ Companion to: `lilypond-score-research.md`
 
 ## Decisions
 
-| Decision | Choice |
-|----------|--------|
-| API | Low-level `StaveNote` (not EasyScore strings) |
-| Quantization grid | 32nd notes |
-| Key signature | Defer — show all accidentals explicitly |
-| Layout | Auto-wrap (system-per-row) |
-| Fonts | CDN (Bravura + Academico) |
+| Decision          | Choice                                        |
+| ----------------- | --------------------------------------------- |
+| API               | Low-level `StaveNote` (not EasyScore strings) |
+| Quantization grid | 32nd notes                                    |
+| Key signature     | Defer — show all accidentals explicitly       |
+| Layout            | Auto-wrap (system-per-row)                    |
+| Fonts             | CDN (Bravura + Academico)                     |
 
 ---
 
@@ -44,50 +44,50 @@ Factory
 ## Low-level API (our approach)
 
 ```ts
-import { VexFlow, StaveNote } from "vexflow"
+import { VexFlow, StaveNote } from "vexflow";
 
-const renderer = new VexFlow.Renderer(div, VexFlow.Renderer.Backends.SVG)
-renderer.resize(800, 200)
-const ctx = renderer.getContext()
+const renderer = new VexFlow.Renderer(div, VexFlow.Renderer.Backends.SVG);
+renderer.resize(800, 200);
+const ctx = renderer.getContext();
 
-const stave = new Stave(10, 40, 400)
-stave.addClef("treble").addTimeSignature("4/4")
-stave.setContext(ctx).draw()
+const stave = new Stave(10, 40, 400);
+stave.addClef("treble").addTimeSignature("4/4");
+stave.setContext(ctx).draw();
 
 const notes = [
   new StaveNote({ keys: ["c/5"], duration: "q" }),
   new StaveNote({ keys: ["d/4"], duration: "q" }),
   new StaveNote({ keys: ["b/4"], duration: "qr" }),
   new StaveNote({ keys: ["c/4", "e/4", "g/4"], duration: "q" }),
-]
+];
 
-const voice = new Voice({ num_beats: 4, beat_value: 4 })
-voice.addTickables(notes)
+const voice = new Voice({ num_beats: 4, beat_value: 4 });
+voice.addTickables(notes);
 
-new Formatter().joinVoices([voice]).format([voice], 350)
-voice.draw(ctx, stave)
+new Formatter().joinVoices([voice]).format([voice], 350);
+voice.draw(ctx, stave);
 ```
 
 ---
 
 ## Duration Codes
 
-| Code | Duration | Beats (4/4) |
-|------|----------|-------------|
-| `w` | whole | 4 |
-| `h` | half | 2 |
-| `q` | quarter | 1 |
-| `8` | eighth | 0.5 |
-| `16` | sixteenth | 0.25 |
-| `32` | thirty-second | 0.125 |
-| `64` | sixty-fourth | 0.0625 |
-| `qd` | dotted quarter | 1.5 |
-| `hd` | dotted half | 3 |
-| `8d` | dotted eighth | 0.75 |
-| `wd` | dotted whole | 6 |
-| `hr` | half rest | |
-| `qr` | quarter rest | |
-| `8r` | eighth rest | |
+| Code | Duration       | Beats (4/4) |
+| ---- | -------------- | ----------- |
+| `w`  | whole          | 4           |
+| `h`  | half           | 2           |
+| `q`  | quarter        | 1           |
+| `8`  | eighth         | 0.5         |
+| `16` | sixteenth      | 0.25        |
+| `32` | thirty-second  | 0.125       |
+| `64` | sixty-fourth   | 0.0625      |
+| `qd` | dotted quarter | 1.5         |
+| `hd` | dotted half    | 3           |
+| `8d` | dotted eighth  | 0.75        |
+| `wd` | dotted whole   | 6           |
+| `hr` | half rest      |             |
+| `qr` | quarter rest   |             |
+| `8r` | eighth rest    |             |
 
 Append `d` for dotted. Append `r` for rest.
 
@@ -95,21 +95,21 @@ Append `d` for dotted. Append `r` for rest.
 
 ## Note Names
 
-| Our pitch | Note | VexFlow key |
-|-----------|------|-------------|
-| 60 | C4 (middle C) | `c/4` |
-| 61 | C#4 | `c#/4` |
-| 62 | D4 | `d/4` |
-| 63 | Eb4 | `eb/4` |
-| 64 | E4 | `e/4` |
-| 65 | F4 | `f/4` |
-| 66 | F#4 | `f#/4` |
-| 67 | G4 | `g/4` |
-| 68 | G#4 | `g#/4` |
-| 69 | A4 | `a/4` |
-| 70 | Bb4 | `bb/4` |
-| 71 | B4 | `b/4` |
-| 72 | C5 | `c/5` |
+| Our pitch | Note          | VexFlow key |
+| --------- | ------------- | ----------- |
+| 60        | C4 (middle C) | `c/4`       |
+| 61        | C#4           | `c#/4`      |
+| 62        | D4            | `d/4`       |
+| 63        | Eb4           | `eb/4`      |
+| 64        | E4            | `e/4`       |
+| 65        | F4            | `f/4`       |
+| 66        | F#4           | `f#/4`      |
+| 67        | G4            | `g/4`       |
+| 68        | G#4           | `g#/4`      |
+| 69        | A4            | `a/4`       |
+| 70        | Bb4           | `bb/4`      |
+| 71        | B4            | `b/4`       |
+| 72        | C5            | `c/5`       |
 
 ---
 
@@ -118,12 +118,25 @@ Append `d` for dotted. Append `r` for rest.
 ### Step 1: MIDI pitch → VexFlow key
 
 ```ts
-const SHARPS = ["c","c#","d","d#","e","f","f#","g","g#","a","a#","b"]
+const SHARPS = [
+  "c",
+  "c#",
+  "d",
+  "d#",
+  "e",
+  "f",
+  "f#",
+  "g",
+  "g#",
+  "a",
+  "a#",
+  "b",
+];
 
 function midiToVexFlowKey(pitch: number): string {
-  const octave = Math.floor(pitch / 12) - 1
-  const name = SHARPS[pitch % 12]
-  return `${name}/${octave}`
+  const octave = Math.floor(pitch / 12) - 1;
+  const name = SHARPS[pitch % 12];
+  return `${name}/${octave}`;
 }
 ```
 
@@ -132,25 +145,28 @@ function midiToVexFlowKey(pitch: number): string {
 ```ts
 function beatsToDuration(beats: number): string {
   const map: [number, string][] = [
-    [4,     'w'],
-    [3,     'hd'],
-    [2,     'h'],
-    [1.5,   'qd'],
-    [1,     'q'],
-    [0.75,  '8d'],
-    [0.5,   '8'],
-    [0.375, '16d'],
-    [0.25,  '16'],
-    [0.125, '32'],
-    [0.0625,'64'],
-  ]
-  let best = 'q'
-  let bestDiff = Infinity
+    [4, "w"],
+    [3, "hd"],
+    [2, "h"],
+    [1.5, "qd"],
+    [1, "q"],
+    [0.75, "8d"],
+    [0.5, "8"],
+    [0.375, "16d"],
+    [0.25, "16"],
+    [0.125, "32"],
+    [0.0625, "64"],
+  ];
+  let best = "q";
+  let bestDiff = Infinity;
   for (const [len, code] of map) {
-    const diff = Math.abs(beats - len)
-    if (diff < bestDiff) { bestDiff = diff; best = code }
+    const diff = Math.abs(beats - len);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = code;
+    }
   }
-  return best
+  return best;
 }
 ```
 
@@ -170,14 +186,14 @@ Quantization strategy: snap to nearest standard duration. The 32nd note grid mea
 // For each measure:
 const staveNotes = [
   // If gap at start: insert rest(s)
-  new StaveNote({ keys: ['b/4'], duration: 'qr' }),
+  new StaveNote({ keys: ["b/4"], duration: "qr" }),
   // Single note:
-  new StaveNote({ keys: ['c/5'], duration: 'q' }),
+  new StaveNote({ keys: ["c/5"], duration: "q" }),
   // Chord (simultaneous notes):
-  new StaveNote({ keys: ['c/4', 'e/4', 'g/4'], duration: 'q' }),
+  new StaveNote({ keys: ["c/4", "e/4", "g/4"], duration: "q" }),
   // Rest:
-  new StaveNote({ keys: ['b/4'], duration: 'hr' }),
-]
+  new StaveNote({ keys: ["b/4"], duration: "hr" }),
+];
 ```
 
 ---
@@ -186,39 +202,59 @@ const staveNotes = [
 
 ### Already queried
 
-| Field | Used for |
-|-------|----------|
-| `Clip.notes[].pitch` | VexFlow key |
-| `Clip.notes[].start_time` | Measure grouping, ordering |
-| `Clip.notes[].duration` | VexFlow duration |
-| `Clip.length` | Total beats → measure count |
+| Field                     | Used for                    |
+| ------------------------- | --------------------------- |
+| `Clip.notes[].pitch`      | VexFlow key                 |
+| `Clip.notes[].start_time` | Measure grouping, ordering  |
+| `Clip.notes[].duration`   | VexFlow duration            |
+| `Clip.length`             | Total beats → measure count |
 
 ### Need to add to query
 
-| Field | Used for | In Domain.ts? |
-|-------|----------|---------------|
-| `Clip.signature_numerator` | Beats per measure | Yes, line 44 |
-| `Clip.signature_denominator` | Beat value (bottom of time sig) | Yes, line 43 |
+| Field                        | Used for                        | In Domain.ts? |
+| ---------------------------- | ------------------------------- | ------------- |
+| `Clip.signature_numerator`   | Beats per measure               | Yes, line 44  |
+| `Clip.signature_denominator` | Beat value (bottom of time sig) | Yes, line 43  |
 
 Add to `liveql.ts:10` GraphQL query:
 
 ```graphql
-{ live_set { view { detail_clip {
-    id name length is_midi_clip
-    signature_numerator signature_denominator
-    notes { note_id pitch start_time duration velocity mute probability velocity_deviation release_velocity }
-  } } } }
+{
+  live_set {
+    view {
+      detail_clip {
+        id
+        name
+        length
+        is_midi_clip
+        signature_numerator
+        signature_denominator
+        notes {
+          note_id
+          pitch
+          start_time
+          duration
+          velocity
+          mute
+          probability
+          velocity_deviation
+          release_velocity
+        }
+      }
+    }
+  }
+}
 ```
 
 Also update `ClipInfo` interface in `index.tsx`:
 
 ```ts
 interface ClipInfo {
-  id: number
-  name: string
-  length: number
-  signatureNumerator: number
-  signatureDenominator: number
+  id: number;
+  name: string;
+  length: number;
+  signatureNumerator: number;
+  signatureDenominator: number;
 }
 ```
 
@@ -242,31 +278,35 @@ That's it. VexFlow 5 has no runtime dependencies. It bundles its own font data.
 
 ```tsx
 // src/components/ScoreDisplay.tsx
-import { useRef, useEffect } from "react"
-import { VexFlow } from "vexflow"
-import type { Note } from "@/lib/Domain"
+import { useRef, useEffect } from "react";
+import { VexFlow } from "vexflow";
+import type { Note } from "@/lib/Domain";
 
 interface ScoreDisplayProps {
-  notes: Note[]
-  timeSigNum: number
-  timeSigDen: number
+  notes: Note[];
+  timeSigNum: number;
+  timeSigDen: number;
 }
 
-export function ScoreDisplay({ notes, timeSigNum, timeSigDen }: ScoreDisplayProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
+export function ScoreDisplay({
+  notes,
+  timeSigNum,
+  timeSigDen,
+}: ScoreDisplayProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!containerRef.current || notes.length === 0) return
-    containerRef.current.innerHTML = ""
+    if (!containerRef.current || notes.length === 0) return;
+    containerRef.current.innerHTML = "";
 
     VexFlow.loadFonts("Bravura", "Academico").then(() => {
-      VexFlow.setFonts("Bravura", "Academico")
-      renderScore(containerRef.current!, notes, timeSigNum, timeSigDen)
-    })
-  }, [notes, timeSigNum, timeSigDen])
+      VexFlow.setFonts("Bravura", "Academico");
+      renderScore(containerRef.current!, notes, timeSigNum, timeSigDen);
+    });
+  }, [notes, timeSigNum, timeSigDen]);
 
-  if (notes.length === 0) return null
-  return <div ref={containerRef} />
+  if (notes.length === 0) return null;
+  return <div ref={containerRef} />;
 }
 ```
 
@@ -275,13 +315,15 @@ export function ScoreDisplay({ notes, timeSigNum, timeSigDen }: ScoreDisplayProp
 After NoteTable:
 
 ```tsx
-{clipInfo && notes.length > 0 && (
-  <ScoreDisplay
-    notes={notes}
-    timeSigNum={clipInfo.signatureNumerator}
-    timeSigDen={clipInfo.signatureDenominator}
-  />
-)}
+{
+  clipInfo && notes.length > 0 && (
+    <ScoreDisplay
+      notes={notes}
+      timeSigNum={clipInfo.signatureNumerator}
+      timeSigDen={clipInfo.signatureDenominator}
+    />
+  );
+}
 ```
 
 ---

@@ -316,14 +316,14 @@ Source:
 
 ## Recommendation matrix
 
-| Need | Best option |
-|------|-------------|
-| Raw `Note[]` in app, render on page, max control | **VexFlow** |
-| Best browser renderer if we can emit MusicXML | **OpenSheetMusicDisplay** |
-| Lightweight browser SVG from text notation | **abcjs** |
-| Best final engraving quality via local CLI | **LilyPond** |
-| Try explicit MIDI import in a web notation app | **Smoosic** |
-| MEI/MusicXML/ABC engraver via JS/WASM | **Verovio** |
+| Need                                             | Best option               |
+| ------------------------------------------------ | ------------------------- |
+| Raw `Note[]` in app, render on page, max control | **VexFlow**               |
+| Best browser renderer if we can emit MusicXML    | **OpenSheetMusicDisplay** |
+| Lightweight browser SVG from text notation       | **abcjs**                 |
+| Best final engraving quality via local CLI       | **LilyPond**              |
+| Try explicit MIDI import in a web notation app   | **Smoosic**               |
+| MEI/MusicXML/ABC engraver via JS/WASM            | **Verovio**               |
 
 ---
 

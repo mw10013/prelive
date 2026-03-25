@@ -1,10 +1,10 @@
-import { Schema } from "effect"
+import { Schema } from "effect";
 
-const ENDPOINT = "http://localhost:4000/graphql"
+const ENDPOINT = "http://localhost:4000/graphql";
 
 interface GqlResponse {
-  data?: unknown
-  errors?: { message: string }[]
+  data?: unknown;
+  errors?: { message: string }[];
 }
 
 export async function gql<T>(
@@ -16,10 +16,10 @@ export async function gql<T>(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, variables }),
-  })
-  const json = (await response.json()) as GqlResponse
+  });
+  const json = (await response.json()) as GqlResponse;
   if (json.errors?.length) {
-    throw new Error(json.errors.map((e) => e.message).join("; "))
+    throw new Error(json.errors.map((e) => e.message).join("; "));
   }
-  return Schema.decodeUnknownSync(dataSchema)(json.data)
+  return Schema.decodeUnknownSync(dataSchema)(json.data);
 }

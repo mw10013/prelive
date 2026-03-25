@@ -41,16 +41,16 @@ LilyPond is a CLI music engraving program. You feed it a text file describing mu
 
 LilyPond uses a text-based notation language. Key concepts:
 
-| Concept | LilyPond syntax | Example |
-|---------|----------------|---------|
-| Pitches | `c d e f g a b` (Dutch names) | `c' d' e'` (octave above middle C) |
-| Octave | `'` = up, `,` = down from middle | `c,,` = two octaves below middle C |
-| Duration | Number after note: 1=whole, 2=half, 4=quarter, 8=eighth | `c4 d8 e8` |
-| Dots | `.` after duration | `c4.` = dotted quarter |
-| Rests | `r` | `r4 r2` |
-| Relative mode | `\relative { c d e f }` | Auto-octave selection |
-| Time sig | `\time 3/4` | |
-| Tempo | `\tempo 4=120` | |
+| Concept       | LilyPond syntax                                         | Example                            |
+| ------------- | ------------------------------------------------------- | ---------------------------------- |
+| Pitches       | `c d e f g a b` (Dutch names)                           | `c' d' e'` (octave above middle C) |
+| Octave        | `'` = up, `,` = down from middle                        | `c,,` = two octaves below middle C |
+| Duration      | Number after note: 1=whole, 2=half, 4=quarter, 8=eighth | `c4 d8 e8`                         |
+| Dots          | `.` after duration                                      | `c4.` = dotted quarter             |
+| Rests         | `r`                                                     | `r4 r2`                            |
+| Relative mode | `\relative { c d e f }`                                 | Auto-octave selection              |
+| Time sig      | `\time 3/4`                                             |                                    |
+| Tempo         | `\tempo 4=120`                                          |                                    |
 
 ### Minimal LilyPond file
 
@@ -72,20 +72,33 @@ LilyPond uses a text-based notation language. Key concepts:
 MIDI pitch → LilyPond note name + octave marks:
 
 ```ts
-const NOTE_NAMES = ['c', 'cis', 'd', 'dis', 'e', 'f', 'fis', 'g', 'gis', 'a', 'ais', 'b']
+const NOTE_NAMES = [
+  "c",
+  "cis",
+  "d",
+  "dis",
+  "e",
+  "f",
+  "fis",
+  "g",
+  "gis",
+  "a",
+  "ais",
+  "b",
+];
 
 function pitchToLilypond(midiPitch: number): string {
-  const octave = Math.floor(midiPitch / 12) - 1  // MIDI octave number
-  const noteInOctave = midiPitch % 12
-  const name = NOTE_NAMES[noteInOctave]
+  const octave = Math.floor(midiPitch / 12) - 1; // MIDI octave number
+  const noteInOctave = midiPitch % 12;
+  const name = NOTE_NAMES[noteInOctave];
   // LilyPond: c' is octave 4 (one above middle C)
   // MIDI octave 4 = LilyPond octave with one '
   // MIDI octave 3 = middle C = c' in LilyPond
   // So: octave marks = octave - 3
-  const marks = octave - 3
-  if (marks > 0) return name + "'".repeat(marks)
-  if (marks < 0) return name + ",".repeat(-marks)
-  return name
+  const marks = octave - 3;
+  if (marks > 0) return name + "'".repeat(marks);
+  if (marks < 0) return name + ",".repeat(-marks);
+  return name;
 }
 ```
 
@@ -97,19 +110,20 @@ LilyPond durations are fractions of a whole note: `1`=whole, `2`=half, `4`=quart
 
 Our notes use beat durations. Assuming 4/4 time (1 beat = quarter note):
 
-| Beat duration | LilyPond | |
-|---|---|---|
-| 4.0 | `1` (whole) | |
-| 2.0 | `2` (half) | |
-| 1.0 | `4` (quarter) | |
-| 0.5 | `8` (eighth) | |
-| 0.25 | `16` (sixteenth) | |
-| 1.5 | `4.` (dotted quarter) | |
-| 0.75 | `8.` (dotted eighth) | |
+| Beat duration | LilyPond              |     |
+| ------------- | --------------------- | --- |
+| 4.0           | `1` (whole)           |     |
+| 2.0           | `2` (half)            |     |
+| 1.0           | `4` (quarter)         |     |
+| 0.5           | `8` (eighth)          |     |
+| 0.25          | `16` (sixteenth)      |     |
+| 1.5           | `4.` (dotted quarter) |     |
+| 0.75          | `8.` (dotted eighth)  |     |
 
 General formula: `lilypondDuration = 4 / beatDuration`
 
 **Problem**: LilyPond only supports powers of 2 (with optional dots). Arbitrary float durations (e.g., 0.33 beats) don't map cleanly. Options:
+
 1. **Quantize** to nearest standard duration (round to 1/16 or 1/32)
 2. **Tuplets** for triplets etc. (complex)
 3. **Ignore** — round and accept small timing differences in the visual representation
@@ -119,6 +133,7 @@ General formula: `lilypondDuration = 4 / beatDuration`
 LilyPond handles chords with angle brackets: `<c e g>4`
 
 Notes with the same `start_time` should be grouped into chords. Notes at different `start_time` values form a sequence. This requires:
+
 1. Sort notes by `start_time` then `pitch`
 2. Group simultaneous notes
 3. Output rests for gaps between notes
@@ -126,6 +141,7 @@ Notes with the same `start_time` should be grouped into chords. Notes at differe
 ### Velocity
 
 LilyPond supports dynamics (`\p`, `\mf`, `\ff`) but these are text markings, not exact values. We could:
+
 1. Map velocity ranges to dynamics: `<40 pp`, `40-60 p`, `60-80 mp`, `80-100 mf`, `100-120 f`, `>120 ff`
 2. Ignore for now (it's a score, not a performance rendering)
 
@@ -153,17 +169,17 @@ This is the harder problem. Three main approaches:
 
 **How it works**: Run `lilypond` binary on the server, generate SVG, serve to browser.
 
-| Aspect | Detail |
-|--------|--------|
-| Quality | **Excellent** — professional engraving, the gold standard |
-| Setup | Requires LilyPond binary installed on server |
-| Output | SVG (scalable, embeddable) |
-| Latency | ~100-500ms per render (slow for CLI spawn) |
+| Aspect       | Detail                                                                                 |
+| ------------ | -------------------------------------------------------------------------------------- |
+| Quality      | **Excellent** — professional engraving, the gold standard                              |
+| Setup        | Requires LilyPond binary installed on server                                           |
+| Output       | SVG (scalable, embeddable)                                                             |
+| Latency      | ~100-500ms per render (slow for CLI spawn)                                             |
 | Node wrapper | [lilynode](https://www.npmjs.com/package/lilynode) — thin wrapper, outputs SVG/PNG/PDF |
 
 ```ts
-import { render } from 'lilynode'
-const svg = await render(lilypondString, { format: 'svg' })
+import { render } from "lilynode";
+const svg = await render(lilypondString, { format: "svg" });
 ```
 
 **Pros**: Best possible engraving quality. Supports everything LilyPond does.
@@ -175,22 +191,24 @@ const svg = await render(lilypondString, { format: 'svg' })
 
 **How it works**: JavaScript library that draws music notation directly to SVG/Canvas. No LilyPond involved.
 
-| Aspect | Detail |
-|--------|--------|
-| Quality | Good — not as refined as LilyPond |
-| Setup | `npm install vexflow` |
-| Output | SVG or Canvas directly in DOM |
-| Latency | Instant (client-side) |
-| TypeScript | Full types, written in TS |
-| Version | 5.0.0 (March 2025) |
+| Aspect     | Detail                            |
+| ---------- | --------------------------------- |
+| Quality    | Good — not as refined as LilyPond |
+| Setup      | `npm install vexflow`             |
+| Output     | SVG or Canvas directly in DOM     |
+| Latency    | Instant (client-side)             |
+| TypeScript | Full types, written in TS         |
+| Version    | 5.0.0 (March 2025)                |
 
 ```ts
-import { Factory } from 'vexflow'
-const vf = new Factory({ renderer: { elementId: 'score', width: 800, height: 200 } })
-const score = vf.EasyScore()
-const system = score.system()
-system.addStave({ voices: [score.voice(score.notes('C#4/q, B4, A4, G#4'))] })
-vf.draw()
+import { Factory } from "vexflow";
+const vf = new Factory({
+  renderer: { elementId: "score", width: 800, height: 200 },
+});
+const score = vf.EasyScore();
+const system = score.system();
+system.addStave({ voices: [score.voice(score.notes("C#4/q, B4, A4, G#4"))] });
+vf.draw();
 ```
 
 **Pros**: Pure JS, no server dependency, instant render, good TypeScript support.
@@ -200,18 +218,18 @@ vf.draw()
 
 **How it works**: JavaScript library that parses ABC notation text and renders to SVG.
 
-| Aspect | Detail |
-|--------|--------|
-| Quality | Decent — simpler than LilyPond |
-| Setup | `npm install abcjs` |
-| Output | SVG in DOM |
-| Latency | Instant (client-side) |
-| Downloads | 23K/week npm |
-| Version | 6.6.2 (Feb 2026) |
+| Aspect    | Detail                         |
+| --------- | ------------------------------ |
+| Quality   | Decent — simpler than LilyPond |
+| Setup     | `npm install abcjs`            |
+| Output    | SVG in DOM                     |
+| Latency   | Instant (client-side)          |
+| Downloads | 23K/week npm                   |
+| Version   | 6.6.2 (Feb 2026)               |
 
 ```ts
-import abcjs from 'abcjs'
-abcjs.renderAbc("score", "X:1\nT:Example\nK:C\nC D E F | G8\n")
+import abcjs from "abcjs";
+abcjs.renderAbc("score", "X:1\nT:Example\nK:C\nC D E F | G8\n");
 ```
 
 **Pros**: Text-based input (like LilyPond but simpler). Pure JS. Well-maintained. Good for lead sheets, simple melodies. Also has MIDI playback.
@@ -219,24 +237,24 @@ abcjs.renderAbc("score", "X:1\nT:Example\nK:C\nC D E F | G8\n")
 
 ### Option D: OpenSheetMusicDisplay (client-side, MusicXML)
 
-| Aspect | Detail |
-|--------|--------|
-| Quality | Good (uses VexFlow internally) |
-| Setup | `npm install opensheetmusicdisplay` |
-| Input | MusicXML (not text — XML format) |
-| Version | 1.9.7 (Feb 2026) |
+| Aspect  | Detail                              |
+| ------- | ----------------------------------- |
+| Quality | Good (uses VexFlow internally)      |
+| Setup   | `npm install opensheetmusicdisplay` |
+| Input   | MusicXML (not text — XML format)    |
+| Version | 1.9.7 (Feb 2026)                    |
 
 **Pros**: Full MusicXML support, good for complex scores.
 **Cons**: MusicXML is verbose XML — not pleasant to generate programmatically. Heavy dependency (includes VexFlow).
 
 ### Option E: Verovio (client-side, MEI format)
 
-| Aspect | Detail |
-|--------|--------|
+| Aspect  | Detail                             |
+| ------- | ---------------------------------- |
 | Quality | Excellent for academic/early music |
-| Input | MEI (XML), also supports MusicXML |
-| WASM | Has a WebAssembly build |
-| Setup | `npm install verovio` |
+| Input   | MEI (XML), also supports MusicXML  |
+| WASM    | Has a WebAssembly build            |
+| Setup   | `npm install verovio`              |
 
 **Cons**: MEI is academic/research-focused XML. Heavy for our use case.
 
@@ -248,13 +266,13 @@ abcjs.renderAbc("score", "X:1\nT:Example\nK:C\nC D E F | G8\n")
 
 ## Recommendation Matrix
 
-| Approach | Quality | Complexity | Latency | Server Dep? | Fit for our case |
-|----------|---------|------------|---------|-------------|-----------------|
-| **A: LilyPond + lilynode** | ★★★★★ | Medium | ~200ms | Yes | Best quality, fits server fn pattern |
-| **B: VexFlow** | ★★★☆☆ | High | Instant | No | Programmatic API, complex mapping |
-| **C: abcjs** | ★★★☆☆ | Low | Instant | No | Simple text format, easiest path |
-| **D: OSMD** | ★★★★☆ | Medium | Instant | No | MusicXML is verbose to generate |
-| **E: Verovio** | ★★★★☆ | High | Instant | No | Overkill for MIDI notes |
+| Approach                   | Quality | Complexity | Latency | Server Dep? | Fit for our case                     |
+| -------------------------- | ------- | ---------- | ------- | ----------- | ------------------------------------ |
+| **A: LilyPond + lilynode** | ★★★★★   | Medium     | ~200ms  | Yes         | Best quality, fits server fn pattern |
+| **B: VexFlow**             | ★★★☆☆   | High       | Instant | No          | Programmatic API, complex mapping    |
+| **C: abcjs**               | ★★★☆☆   | Low        | Instant | No          | Simple text format, easiest path     |
+| **D: OSMD**                | ★★★★☆   | Medium     | Instant | No          | MusicXML is verbose to generate      |
+| **E: Verovio**             | ★★★★☆   | High       | Instant | No          | Overkill for MIDI notes              |
 
 ---
 
@@ -275,13 +293,15 @@ Create a server function that converts notes to `.ly`, calls lilynode to render 
 
 ```ts
 // Our notes → ABC notation
-function notesToAbc(notes: Note[], timeSig = '4/4'): string {
-  const sorted = [...notes].sort((a, b) => a.start_time - b.start_time || a.pitch - b.pitch)
+function notesToAbc(notes: Note[], timeSig = "4/4"): string {
+  const sorted = [...notes].sort(
+    (a, b) => a.start_time - b.start_time || a.pitch - b.pitch,
+  );
   // group simultaneous notes (same start_time) into chords
   // convert pitch: MIDI 60 = C in octave 4 = C in ABC
   // convert duration: 1 beat = quarter = /4 in ABC
   // fill rests for gaps
-  return `X:1\nT:Clip\nM:${timeSig}\nL:1/4\nK:C\n${abcNotes}\n`
+  return `X:1\nT:Clip\nM:${timeSig}\nL:1/4\nK:C\n${abcNotes}\n`;
 }
 ```
 
@@ -295,12 +315,15 @@ The score display would go in `src/routes/index.tsx` below the NoteTable, gated 
 
 ```tsx
 // After NoteTable...
-{clipInfo && notes.length > 0 && (
-  <ScoreDisplay notes={notes} clipInfo={clipInfo} />
-)}
+{
+  clipInfo && notes.length > 0 && (
+    <ScoreDisplay notes={notes} clipInfo={clipInfo} />
+  );
+}
 ```
 
 A `<ScoreDisplay>` component would:
+
 1. Take `notes: Note[]` as prop
 2. Convert to the chosen format (ABC text / LilyPond text / VexFlow API calls)
 3. Render to SVG
@@ -310,15 +333,15 @@ A `<ScoreDisplay>` component would:
 
 ## Open Questions
 
-| # | Question | Notes |
-|---|----------|-------|
-| 1 | Single track or multi-track? | Current data is one clip = one track. Multiple tracks would need separate staves. |
-| 2 | Real-time preview as you edit? | If client-side (abcjs/VexFlow), yes instant. If server-side (lilynode), debounced re-render. |
-| 3 | Chord detection? | Need to group simultaneous notes. How aggressive? Exact `start_time` match, or within epsilon? |
-| 4 | Quantization strategy? | LilyPond needs standard durations. ABC is more flexible but still limited. How to handle triplet timing etc.? |
-| 5 | Key signature / accidentals? | Notes are raw MIDI pitches. LilyPond can auto-detect key or we can force it. For ABC, sharps/flats are explicit (`^C` = C#, `_D` = Db). |
-| 6 | Playback? | abcjs has built-in MIDI playback. VexFlow needs external MIDI. LilyPond SVG has no playback. |
-| 7 | Which library? | **Need your input** — see recommendation above. |
+| #   | Question                       | Notes                                                                                                                                   |
+| --- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Single track or multi-track?   | Current data is one clip = one track. Multiple tracks would need separate staves.                                                       |
+| 2   | Real-time preview as you edit? | If client-side (abcjs/VexFlow), yes instant. If server-side (lilynode), debounced re-render.                                            |
+| 3   | Chord detection?               | Need to group simultaneous notes. How aggressive? Exact `start_time` match, or within epsilon?                                          |
+| 4   | Quantization strategy?         | LilyPond needs standard durations. ABC is more flexible but still limited. How to handle triplet timing etc.?                           |
+| 5   | Key signature / accidentals?   | Notes are raw MIDI pitches. LilyPond can auto-detect key or we can force it. For ABC, sharps/flats are explicit (`^C` = C#, `_D` = Db). |
+| 6   | Playback?                      | abcjs has built-in MIDI playback. VexFlow needs external MIDI. LilyPond SVG has no playback.                                            |
+| 7   | Which library?                 | **Need your input** — see recommendation above.                                                                                         |
 
 ---
 

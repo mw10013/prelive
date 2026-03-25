@@ -1,4 +1,4 @@
-type DurationEntry = [beats: number, code: string]
+type DurationEntry = [beats: number, code: string];
 
 const DURATION_MAP: DurationEntry[] = [
   [4, "w"],
@@ -12,28 +12,28 @@ const DURATION_MAP: DurationEntry[] = [
   [0.25, "16"],
   [0.125, "32"],
   [0.0625, "64"],
-]
+];
 
-const GRID = 0.125 // 32nd note
+const GRID = 0.125; // 32nd note
 
 function snapToGrid(beats: number): number {
-  return Math.round(beats / GRID) * GRID
+  return Math.round(beats / GRID) * GRID;
 }
 
 export function beatsToDuration(beats: number): string {
-  const snapped = snapToGrid(beats)
-  let best = "q"
-  let bestDiff = Infinity
+  const snapped = snapToGrid(beats);
+  let best = "q";
+  let bestDiff = Infinity;
   for (const [len, code] of DURATION_MAP) {
-    const diff = Math.abs(snapped - len)
+    const diff = Math.abs(snapped - len);
     if (diff < bestDiff) {
-      bestDiff = diff
-      best = code
+      bestDiff = diff;
+      best = code;
     }
   }
-  return best
+  return best;
 }
 
 export function beatsToRestDuration(beats: number): string {
-  return `${beatsToDuration(beats)}r`
+  return `${beatsToDuration(beats)}r`;
 }

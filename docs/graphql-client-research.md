@@ -31,7 +31,14 @@ Three operation types: **query** (read), **mutation** (write), **subscription** 
 A query is a string. You POST `{ "query": "...", "variables": {...} }` to the server. Server responds `{ "data": {...}, "errors": [...] }`.
 
 ```graphql
-{ live_set { is_playing tracks { name } } }
+{
+  live_set {
+    is_playing
+    tracks {
+      name
+    }
+  }
+}
 ```
 
 For liveql, one root field (`live_set`). You select down from there.
@@ -43,28 +50,48 @@ For liveql, one root field (`live_set`). You select down from there.
 **Base schemas** — one per GraphQL type, scalar fields only:
 
 ```ts
-import { Schema } from "effect"
+import { Schema } from "effect";
 
 const Song = Schema.Struct({
-  id: Schema.Number, path: Schema.String, is_playing: Schema.Boolean,
-})
+  id: Schema.Number,
+  path: Schema.String,
+  is_playing: Schema.Boolean,
+});
 const Track = Schema.Struct({
-  id: Schema.Number, path: Schema.String, has_midi_input: Schema.Boolean, name: Schema.String,
-})
+  id: Schema.Number,
+  path: Schema.String,
+  has_midi_input: Schema.Boolean,
+  name: Schema.String,
+});
 const ClipSlot = Schema.Struct({
-  id: Schema.Number, path: Schema.String, has_clip: Schema.Boolean,
-})
+  id: Schema.Number,
+  path: Schema.String,
+  has_clip: Schema.Boolean,
+});
 const Clip = Schema.Struct({
-  id: Schema.Number, path: Schema.String, end_time: Schema.Number,
-  is_arrangement_clip: Schema.Boolean, is_midi_clip: Schema.Boolean,
-  length: Schema.Number, looping: Schema.Boolean, name: Schema.String,
-  signature_denominator: Schema.Number, signature_numerator: Schema.Number, start_time: Schema.Number,
-})
+  id: Schema.Number,
+  path: Schema.String,
+  end_time: Schema.Number,
+  is_arrangement_clip: Schema.Boolean,
+  is_midi_clip: Schema.Boolean,
+  length: Schema.Number,
+  looping: Schema.Boolean,
+  name: Schema.String,
+  signature_denominator: Schema.Number,
+  signature_numerator: Schema.Number,
+  start_time: Schema.Number,
+});
 const Note = Schema.Struct({
-  note_id: Schema.Number, pitch: Schema.Number, start_time: Schema.Number,
-  duration: Schema.Number, velocity: Schema.Number, mute: Schema.Boolean,
-  probability: Schema.Number, velocity_deviation: Schema.Number, release_velocity: Schema.Number,
-})
+  note_id: Schema.Number,
+  pitch: Schema.Number,
+  start_time: Schema.Number,
+  duration: Schema.Number,
+  velocity: Schema.Number,
+  mute: Schema.Boolean,
+  probability: Schema.Number,
+  velocity_deviation: Schema.Number,
+  release_velocity: Schema.Number,
+});
 ```
 
 **Composed schemas** — for specific queries, built from base:
@@ -72,13 +99,18 @@ const Note = Schema.Struct({
 ```ts
 const SongOverview = Schema.Struct({
   ...Song.fields,
-  tracks: Schema.Array(Schema.Struct({
-    ...Track.fields,
-    clip_slots: Schema.Array(Schema.Struct({
-      ...ClipSlot.fields, clip: Schema.NullOr(Clip),
-    })),
-  })),
-})
+  tracks: Schema.Array(
+    Schema.Struct({
+      ...Track.fields,
+      clip_slots: Schema.Array(
+        Schema.Struct({
+          ...ClipSlot.fields,
+          clip: Schema.NullOr(Clip),
+        }),
+      ),
+    }),
+  ),
+});
 ```
 
 Queries always request all scalar fields. Not optimizing for over-fetching.
@@ -90,10 +122,15 @@ Queries always request all scalar fields. Not optimizing for over-fetching.
 Throw on any `errors`, then validate `data` with Effect Schema:
 
 ```ts
-import { Effect, Schema } from "effect"
-import { HttpClient, HttpClientResponse, FetchHttpClient, HttpBody } from "effect/unstable/http"
+import { Effect, Schema } from "effect";
+import {
+  HttpClient,
+  HttpClientResponse,
+  FetchHttpClient,
+  HttpBody,
+} from "effect/unstable/http";
 
-const ENDPOINT = "http://localhost:4000/graphql"
+const ENDPOINT = "http://localhost:4000/graphql";
 
 function gqlEffect<T>(
   query: string,
@@ -101,26 +138,34 @@ function gqlEffect<T>(
   dataSchema: Schema.Codec<T, unknown>,
 ): Effect.Effect<T, Schema.SchemaError | Error, HttpClient.HttpClient> {
   return Effect.gen(function* () {
-    const client = yield* HttpClient.HttpClient
+    const client = yield* HttpClient.HttpClient;
     const response = yield* client.post(ENDPOINT, {
       headers: { "Content-Type": "application/json" },
       body: HttpBody.jsonUnsafe({ query, variables }),
-    })
+    });
 
-    const json = yield* response.json
+    const json = yield* response.json;
 
     if (json.errors?.length) {
-      yield* Effect.fail(new Error(json.errors.map((e: any) => e.message).join("; ")))
+      yield* Effect.fail(
+        new Error(json.errors.map((e: any) => e.message).join("; ")),
+      );
     }
 
-    return yield* Schema.decodeUnknownEffect(dataSchema)(json.data)
-  })
+    return yield* Schema.decodeUnknownEffect(dataSchema)(json.data);
+  });
 }
 
-function gql<T>(query: string, dataSchema: Schema.Codec<T, unknown>, variables?: Record<string, unknown>): Promise<T> {
+function gql<T>(
+  query: string,
+  dataSchema: Schema.Codec<T, unknown>,
+  variables?: Record<string, unknown>,
+): Promise<T> {
   return Effect.runPromise(
-    gqlEffect(query, variables, dataSchema).pipe(Effect.provide(FetchHttpClient.layer))
-  )
+    gqlEffect(query, variables, dataSchema).pipe(
+      Effect.provide(FetchHttpClient.layer),
+    ),
+  );
 }
 ```
 
@@ -164,15 +209,21 @@ function SongView() {
 Mutation:
 
 ```ts
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 const rename = useMutation({
-  mutationFn: (name: string) => gql(
-    `mutation { track_set_name(id: ${trackId}, name: "${name}") { id name } }`,
-    Schema.Struct({ track_set_name: Schema.Struct({ id: Schema.Number, name: Schema.String }) }),
-  ),
-  onSuccess: () => queryClient.invalidateQueries({ queryKey: ['live_set'] }),
-})
+  mutationFn: (name: string) =>
+    gql(
+      `mutation { track_set_name(id: ${trackId}, name: "${name}") { id name } }`,
+      Schema.Struct({
+        track_set_name: Schema.Struct({
+          id: Schema.Number,
+          name: Schema.String,
+        }),
+      }),
+    ),
+  onSuccess: () => queryClient.invalidateQueries({ queryKey: ["live_set"] }),
+});
 ```
 
 ---
@@ -182,20 +233,16 @@ const rename = useMutation({
 ```ts
 // Basic
 `{ live_set { is_playing } }`
-
 // Nested
 `{ live_set { tracks { name clip_slots { has_clip clip { name looping } } } } }`
-
 // Field argument
 `{ live_set { track(index: 0) { name } } }`
-
 // Mutation
 `mutation { song_start_playing(id: 1) { is_playing } }`
-
 // Mutation with variables (for user input)
 `mutation RenameTrack($id: Int!, $name: String!) {
   track_set_name(id: $id, name: $name) { id name }
-}`
+}`;
 // variables: { id: 5, name: "Synth Lead" }
 ```
 
@@ -229,14 +276,63 @@ Plain strings. No builder library needed for this schema size.
 <summary>SDL from liveql-n4m.js</summary>
 
 ```graphql
-type Query { live_set: Song! }
+type Query {
+  live_set: Song!
+}
 
-type Song { id: Int! path: String! is_playing: Boolean! view: SongView! track(index: Int!): Track tracks: [Track!]! }
-type SongView { id: Int! path: String! selected_track: Track detail_clip: Clip }
-type Track { id: Int! path: String! clip_slot(index: Int!): ClipSlot clip_slots: [ClipSlot!]! has_midi_input: Boolean! name: String! }
-type ClipSlot { id: Int! path: String! clip: Clip has_clip: Boolean! }
-type Clip { id: Int! path: String! end_time: Float! is_arrangement_clip: Boolean! is_midi_clip: Boolean! length: Float! looping: Boolean! name: String! signature_denominator: Int! signature_numerator: Int! start_time: Float! notes: [Note!] }
-type Note { note_id: Int! pitch: Int! start_time: Float! duration: Float! velocity: Float! mute: Boolean! probability: Float! velocity_deviation: Float! release_velocity: Float! }
+type Song {
+  id: Int!
+  path: String!
+  is_playing: Boolean!
+  view: SongView!
+  track(index: Int!): Track
+  tracks: [Track!]!
+}
+type SongView {
+  id: Int!
+  path: String!
+  selected_track: Track
+  detail_clip: Clip
+}
+type Track {
+  id: Int!
+  path: String!
+  clip_slot(index: Int!): ClipSlot
+  clip_slots: [ClipSlot!]!
+  has_midi_input: Boolean!
+  name: String!
+}
+type ClipSlot {
+  id: Int!
+  path: String!
+  clip: Clip
+  has_clip: Boolean!
+}
+type Clip {
+  id: Int!
+  path: String!
+  end_time: Float!
+  is_arrangement_clip: Boolean!
+  is_midi_clip: Boolean!
+  length: Float!
+  looping: Boolean!
+  name: String!
+  signature_denominator: Int!
+  signature_numerator: Int!
+  start_time: Float!
+  notes: [Note!]
+}
+type Note {
+  note_id: Int!
+  pitch: Int!
+  start_time: Float!
+  duration: Float!
+  velocity: Float!
+  mute: Boolean!
+  probability: Float!
+  velocity_deviation: Float!
+  release_velocity: Float!
+}
 
 type Mutation {
   song_start_playing(id: Int!): Song
@@ -245,15 +341,31 @@ type Mutation {
   clip_set_looping(id: Int!, looping: Boolean!): Clip
   clip_set_properties(id: Int!, properties: ClipPropertiesInput!): Clip
   clip_add_new_notes(id: Int!, notes_dictionary: NotesDictionaryInput!): Clip
-  clip_apply_note_modifications(id: Int!, notes_dictionary: NotesDictionaryInput!): Clip
+  clip_apply_note_modifications(
+    id: Int!
+    notes_dictionary: NotesDictionaryInput!
+  ): Clip
   clip_fire(id: Int!): Clip
-  clip_get_notes_extended(id: Int!, from_pitch: Int!, pitch_span: Int!, from_time: Float!, time_span: Float!): NotesDictionary!
+  clip_get_notes_extended(
+    id: Int!
+    from_pitch: Int!
+    pitch_span: Int!
+    from_time: Float!
+    time_span: Float!
+  ): NotesDictionary!
   clip_get_selected_notes_extended(id: Int!): NotesDictionary!
   clip_select_all_notes(id: Int!): Clip
   clip_remove_notes_by_id(id: Int!, ids: [Int!]!): Clip
-  clip_remove_notes_extended(id: Int!, from_pitch: Int!, pitch_span: Int!, from_time: Float!, time_span: Float!): Clip
+  clip_remove_notes_extended(
+    id: Int!
+    from_pitch: Int!
+    pitch_span: Int!
+    from_time: Float!
+    time_span: Float!
+  ): Clip
 }
 ```
+
 </details>
 
 ---
@@ -275,31 +387,52 @@ src/routes/
 One `Schema.Struct` per GraphQL object type, scalar fields only. Float fields → `Schema.Number`.
 
 ```ts
-import { Schema } from "effect"
+import { Schema } from "effect";
 
 const Song = Schema.Struct({
-  id: Schema.Number, path: Schema.String, is_playing: Schema.Boolean,
-})
+  id: Schema.Number,
+  path: Schema.String,
+  is_playing: Schema.Boolean,
+});
 const SongView = Schema.Struct({
-  id: Schema.Number, path: Schema.String,
-})
+  id: Schema.Number,
+  path: Schema.String,
+});
 const Track = Schema.Struct({
-  id: Schema.Number, path: Schema.String, has_midi_input: Schema.Boolean, name: Schema.String,
-})
+  id: Schema.Number,
+  path: Schema.String,
+  has_midi_input: Schema.Boolean,
+  name: Schema.String,
+});
 const ClipSlot = Schema.Struct({
-  id: Schema.Number, path: Schema.String, has_clip: Schema.Boolean,
-})
+  id: Schema.Number,
+  path: Schema.String,
+  has_clip: Schema.Boolean,
+});
 const Clip = Schema.Struct({
-  id: Schema.Number, path: Schema.String, end_time: Schema.Number,
-  is_arrangement_clip: Schema.Boolean, is_midi_clip: Schema.Boolean,
-  length: Schema.Number, looping: Schema.Boolean, name: Schema.String,
-  signature_denominator: Schema.Number, signature_numerator: Schema.Number, start_time: Schema.Number,
-})
+  id: Schema.Number,
+  path: Schema.String,
+  end_time: Schema.Number,
+  is_arrangement_clip: Schema.Boolean,
+  is_midi_clip: Schema.Boolean,
+  length: Schema.Number,
+  looping: Schema.Boolean,
+  name: Schema.String,
+  signature_denominator: Schema.Number,
+  signature_numerator: Schema.Number,
+  start_time: Schema.Number,
+});
 const Note = Schema.Struct({
-  note_id: Schema.Number, pitch: Schema.Number, start_time: Schema.Number,
-  duration: Schema.Number, velocity: Schema.Number, mute: Schema.Boolean,
-  probability: Schema.Number, velocity_deviation: Schema.Number, release_velocity: Schema.Number,
-})
+  note_id: Schema.Number,
+  pitch: Schema.Number,
+  start_time: Schema.Number,
+  duration: Schema.Number,
+  velocity: Schema.Number,
+  mute: Schema.Boolean,
+  probability: Schema.Number,
+  velocity_deviation: Schema.Number,
+  release_velocity: Schema.Number,
+});
 ```
 
 Composed schemas built per-query from base fields (e.g. `SongOverview` from the research section above).
@@ -309,15 +442,22 @@ Composed schemas built per-query from base fields (e.g. `SongOverview` from the 
 Use Effect 4 `HttpClient` + `HttpClientRequest` idioms. POST the GraphQL envelope, check for `errors`, decode `data` with the caller's schema.
 
 ```ts
-import { Effect, Schema } from "effect"
-import { FetchHttpClient, HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http"
+import { Effect, Schema } from "effect";
+import {
+  FetchHttpClient,
+  HttpClient,
+  HttpClientRequest,
+  HttpClientResponse,
+} from "effect/unstable/http";
 
-const ENDPOINT = "http://localhost:4000/graphql"
+const ENDPOINT = "http://localhost:4000/graphql";
 
 const GqlEnvelope = Schema.Struct({
   data: Schema.UndefinedOr(Schema.Unknown),
-  errors: Schema.optionalKey(Schema.Array(Schema.Struct({ message: Schema.String }))),
-})
+  errors: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ message: Schema.String })),
+  ),
+});
 
 function gqlEffect<T>(
   query: string,
@@ -325,17 +465,20 @@ function gqlEffect<T>(
   variables?: Record<string, unknown>,
 ): Effect.Effect<T, Error | Schema.SchemaError, HttpClient.HttpClient> {
   return Effect.gen(function* () {
-    const client = yield* HttpClient.HttpClient
+    const client = yield* HttpClient.HttpClient;
     const response = yield* HttpClientRequest.post(ENDPOINT).pipe(
       HttpClientRequest.bodyJsonUnsafe({ query, variables }),
       client.execute,
-    )
-    const envelope = yield* HttpClientResponse.schemaBodyJson(GqlEnvelope)(response)
+    );
+    const envelope =
+      yield* HttpClientResponse.schemaBodyJson(GqlEnvelope)(response);
     if (envelope.errors?.length) {
-      yield* Effect.fail(new Error(envelope.errors.map((e) => e.message).join("; ")))
+      yield* Effect.fail(
+        new Error(envelope.errors.map((e) => e.message).join("; ")),
+      );
     }
-    return yield* Schema.decodeUnknownEffect(dataSchema)(envelope.data)
-  })
+    return yield* Schema.decodeUnknownEffect(dataSchema)(envelope.data);
+  });
 }
 
 function gql<T>(
@@ -346,11 +489,12 @@ function gql<T>(
   return gqlEffect(query, dataSchema, variables).pipe(
     Effect.provide(FetchHttpClient.layer),
     Effect.runPromise,
-  )
+  );
 }
 ```
 
 Key patterns from Effect 4:
+
 - `HttpClientRequest.post(url).pipe(HttpClientRequest.bodyJsonUnsafe(body), client.execute)` — idiomatic request building
 - `HttpClientResponse.schemaBodyJson(schema)(response)` — decode JSON body with schema
 - `Schema.decodeUnknownEffect(schema)(data)` — validate the inner `data` field
@@ -367,23 +511,36 @@ Replace the skeleton with a few live queries to validate the full stack. Use Tan
 ```ts
 const songStatusOptions = queryOptions({
   queryKey: ["live_set", "status"],
-  queryFn: () => gql(
-    `{ live_set { id is_playing } }`,
-    Schema.Struct({ live_set: Schema.Struct({ id: Schema.Number, is_playing: Schema.Boolean }) }),
-  ),
-})
+  queryFn: () =>
+    gql(
+      `{ live_set { id is_playing } }`,
+      Schema.Struct({
+        live_set: Schema.Struct({
+          id: Schema.Number,
+          is_playing: Schema.Boolean,
+        }),
+      }),
+    ),
+});
 
 const trackListOptions = queryOptions({
   queryKey: ["live_set", "tracks"],
-  queryFn: () => gql(
-    `{ live_set { tracks { id name has_midi_input } } }`,
-    Schema.Struct({
-      live_set: Schema.Struct({
-        tracks: Schema.Array(Schema.Struct({ id: Schema.Number, name: Schema.String, has_midi_input: Schema.Boolean })),
+  queryFn: () =>
+    gql(
+      `{ live_set { tracks { id name has_midi_input } } }`,
+      Schema.Struct({
+        live_set: Schema.Struct({
+          tracks: Schema.Array(
+            Schema.Struct({
+              id: Schema.Number,
+              name: Schema.String,
+              has_midi_input: Schema.Boolean,
+            }),
+          ),
+        }),
       }),
-    }),
-  ),
-})
+    ),
+});
 ```
 
 Render each query result in a `Card`. Show loading/error states via `useQuery` status. Display raw JSON with `<pre>` for quick validation.
