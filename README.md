@@ -18,3 +18,7 @@ curl -s http://localhost:4000/graphql \
   -H 'Content-Type: application/json' \
   -d '{"query":"{ live_set { id path is_playing tracks { id name clip_slots { id has_clip clip { id name length is_midi_clip } } } } }"}' | jq .
 ```
+
+```
+https://github.com/Ableton/maxdevtools
+```

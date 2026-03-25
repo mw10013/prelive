@@ -78,7 +78,7 @@ const columns: ColumnDef<Note>[] = [
   { accessorKey: "pitch", header: "Pitch", size: 52, cell: EditableCell },
   { accessorKey: "start_time", header: "Start", size: 52, cell: EditableCell },
   { accessorKey: "duration", header: "Dur", size: 52, cell: EditableCell },
-  { accessorKey: "velocity", header: "Vel", size: 46, cell: EditableCell },
+  { accessorKey: "velocity", header: "Vel", size: 56, cell: EditableCell },
   { accessorKey: "mute", header: "Mute", size: 40, cell: MuteCell },
 ]
 
