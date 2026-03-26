@@ -317,3 +317,56 @@ tracks = [create_track(t) for t in midi_dump[1]]
 ...
 staves.append(Staff(t))
 ```
+
+## Handling both performance data and keyboard (treble/bass) data
+
+### Recommended approach: keep custom generator, add two features
+
+1) Performance-aware quantization
+
+- Keep the current grid quantization but make it configurable per clip (or derive from tempo/clip resolution). This directly addresses performance microtiming while preserving intended rhythmic values.
+- Current behavior (fixed grid) is here:
+
+```
+export const quantizeNotes = (
+  notes: readonly Note[],
+  gridSize = 1 / 16,
+): readonly Note[] =>
+  notes.map((note) => ({
+    ...note,
+    start_time: Math.round(note.start_time / gridSize) * gridSize,
+    duration: Math.round(note.duration / gridSize) * gridSize,
+  }));
+```
+
+2) Treble/bass staff split for keyboard clips
+
+- Add a split step before LilyPond generation that assigns notes to two staves by pitch range (or by explicit track/channel metadata if available). The current generator always emits a single staff with up to four voices:
+
+```
+const voiceCommands = [
+  String.raw`\voiceOne`,
+  String.raw`\voiceTwo`,
+  String.raw`\voiceThree`,
+  String.raw`\voiceFour`,
+];
+```
+
+- `midi2ly` shows one way to choose a clef from average pitch, which can inform your staff split thresholds:
+
+```
+def get_best_clef(average_pitch):
+    if average_pitch:
+        if average_pitch <= 3*12:
+            return Clef(0)
+        if average_pitch <= 5*12:
+            return Clef(1)
+        if average_pitch >= 7*12:
+            return Clef(3)
+    return Clef(2)
+```
+
+### Why not rely on midi2ly for both?
+
+- `midi2ly` can handle performance data, but its staff/voice decisions depend on how the MIDI is structured (tracks/channels) and the CLI quantization flags you provide. For a controlled app pipeline with EDM clips and predictable editing, custom generation gives you deterministic output.
+- You can still offer `midi2ly` as an import path for external MIDI files, but it is less predictable for live note-list data.
