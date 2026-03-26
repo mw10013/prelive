@@ -6,7 +6,7 @@
 - LiveQL schema: `refs/liveql/liveql-n4m.js`
 - LiveQL LOM mapping notes: `refs/liveql/docs/lom-schema-research.md`
 
-## LOM fields that actually help score rendering (web excerpts)
+## LOM fields that help score rendering (web excerpts)
 
 ### Clip time signature
 
@@ -16,14 +16,9 @@
 ### signature_denominator int observe
 ```
 
-## Notes about what is not needed
-
-- Loop/marker fields are not required if we always render the full note list.
-- Song tempo is not required for static notation output.
-
 ## LiveQL today (current schema coverage)
 
-The current GraphQL schema does not expose quantization or groove settings. From `refs/liveql/liveql-n4m.js`:
+From `refs/liveql/liveql-n4m.js`:
 
 ```
 type Clip {
@@ -62,7 +57,7 @@ get_notes_extended(id, 0, 128, 0, parent.length)
 
 This means score rendering can miss notes outside the current `0..clip.length` span unless we expose `get_all_notes_extended`.
 
-## What is actually needed in LiveQL for score rendering
+## What is needed in LiveQL for score rendering
 
 ### 1) Notes (full range)
 
@@ -72,18 +67,7 @@ This means score rendering can miss notes outside the current `0..clip.length` s
 
 - Expose `Clip.signature_numerator` and `Clip.signature_denominator` (already present in the schema) as the meter for barlines and beaming.
 
-## What we do not need
-
-- Loop/marker fields (we render the full note list).
-- Song tempo (static notation only).
-
-## How this supports performance data + keyboard data
-
-- Performance data: render directly from raw note timing; no dependency on Live quantization settings.
-- Keyboard data: use pitch-based staff split in the app; no extra LOM fields required.
-
 ## Minimal LiveQL additions (concrete list)
 
 - Query/mutation: `clip_get_all_notes_extended`.
-- No loop/marker fields.
-- No Song tempo.
+- `Clip` time signature is already in the schema, keep it as-is.
