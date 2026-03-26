@@ -246,3 +246,74 @@ If the keyboard clip is split into separate tracks/channels (left hand vs right 
 - If you need treble/bass staves for keyboard clips, you will need either:
   - MIDI input organized into separate tracks/channels for `midi2ly`, or
   - custom logic to split notes by pitch range into two staves before LilyPond generation.
+
+## Recommendation (which approach and why)
+
+### Use custom LilyPond generation as the primary path
+
+Rationale, grounded in current code and expected clip types:
+
+- EDM clips are typically lines or block chords, not dense counterpoint. The custom generator is already optimized for this with chord grouping by identical start/duration:
+
+```
+const key = `${String(start)}:${String(duration)}`;
+const entry = grouped.get(key) ?? { start, duration, pitches: [] };
+entry.pitches.push(note.pitch);
+```
+
+- It enforces an explicit grid (`gridSize = 1/16` by default), which directly addresses the “performance vs notation” mismatch:
+
+```
+start_time: Math.round(note.start_time / gridSize) * gridSize,
+duration: Math.round(note.duration / gridSize) * gridSize,
+```
+
+- It generates LilyPond directly from quantized note events and does not rely on MIDI translation steps that can reintroduce timing noise:
+
+```
+const lyContent = notesToLilyPond(notes);
+...
+ChildProcess.make("lilypond", ["-dbackend=svg", "-o", outputBase, tmpLy])
+```
+
+### Reserve midi2ly for specific use cases
+
+`midi2ly` is designed for MIDI performance data and can be useful when:
+
+- You have real performance timing and want LilyPond to interpret it with its quantization options (`--start-quant`, `--duration-quant`, `--allow-tuplet`).
+- MIDI is already available as the source of truth (e.g., external files) and you do not control the upstream note list format.
+
+Evidence that it is built for this use case:
+
+```
+p.add_option('-d', '--duration-quant',
+             metavar=_('DUR'),
+             help=_('quantise note durations on DUR'))
+...
+p.add_option('-s', '--start-quant', help=_('quantise note starts on DUR'),
+             metavar=_('DUR'))
+```
+
+### Gap to address if using custom generation for keyboard clips
+
+The custom generator always emits a single staff; `midi2ly` can separate voices and choose clefs per staff when the MIDI is split into tracks/channels. If treble/bass staff separation is a core requirement for keyboard clips, the custom generator needs a split-by-register step.
+
+Evidence of `midi2ly` clef and staff handling:
+
+```
+def get_best_clef(average_pitch):
+    if average_pitch:
+        if average_pitch <= 3*12:
+            return Clef(0)
+        if average_pitch <= 5*12:
+            return Clef(1)
+        if average_pitch >= 7*12:
+            return Clef(3)
+    return Clef(2)
+```
+
+```
+tracks = [create_track(t) for t in midi_dump[1]]
+...
+staves.append(Staff(t))
+```
