@@ -30,6 +30,7 @@ function RouteComponent() {
     new Set(),
   );
   const [deletedNoteIds, setDeletedNoteIds] = useState<Set<number>>(new Set());
+  const [readRenderToken, setReadRenderToken] = useState(0);
 
   const readMutation = useMutation({
     mutationFn: () => readClip(),
@@ -46,6 +47,7 @@ function RouteComponent() {
       setNotes([...(detailClip.notes ?? [])]);
       setModifiedNoteIds(new Set());
       setDeletedNoteIds(new Set());
+      setReadRenderToken((prev) => prev + 1);
     },
   });
 
@@ -169,6 +171,7 @@ function RouteComponent() {
           notes={notes}
           timeSigNum={clipInfo.signatureNumerator}
           timeSigDen={clipInfo.signatureDenominator}
+          autoRenderToken={readRenderToken}
         />
       )}
     </div>

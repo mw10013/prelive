@@ -1,6 +1,6 @@
 import type { Note } from "@/lib/Domain";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useMutation } from "@tanstack/react-query";
 
@@ -11,14 +11,17 @@ interface ScoreDisplayProps {
   notes: readonly Note[];
   timeSigNum: number;
   timeSigDen: number;
+  autoRenderToken?: number;
 }
 
 export function ScoreDisplay({
   notes,
   timeSigNum: _timeSigNum,
   timeSigDen: _timeSigDen,
+  autoRenderToken,
 }: ScoreDisplayProps) {
   const [lilypondSvg, setLilypondSvg] = useState<string | null>(null);
+  const latestNotes = useRef(notes);
 
   const { mutate: renderLilypond, isPending: isLilypondLoading } = useMutation({
     mutationFn: async (noteData: readonly Note[]) => {
@@ -29,6 +32,15 @@ export function ScoreDisplay({
       setLilypondSvg(svg);
     },
   });
+
+  useEffect(() => {
+    latestNotes.current = notes;
+  }, [notes]);
+
+  useEffect(() => {
+    if (!autoRenderToken || latestNotes.current.length === 0) return;
+    renderLilypond(latestNotes.current);
+  }, [autoRenderToken, renderLilypond]);
 
   if (notes.length === 0) return null;
 
