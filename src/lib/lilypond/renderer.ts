@@ -7,7 +7,8 @@ import { Effect, FileSystem, Layer, Path, Schema, ServiceMap } from "effect";
 import * as ChildProcess from "effect/unstable/process/ChildProcess";
 import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner";
 
-import { notesToMidiFile, quantizeNotes } from "./midi";
+import { notesToMidiFile } from "./midi";
+import { quantizeNotes } from "./quantizer";
 import { notesToLilyPond } from "./score";
 
 class LilyPondError extends Schema.TaggedErrorClass<LilyPondError>()(
@@ -61,7 +62,8 @@ export class LilyPondRenderer extends ServiceMap.Service<
       const renderToSvg = Effect.fn("LilyPondRenderer.renderToSvg")(function* (
         notes: readonly Note[],
       ) {
-        const midiBuffer = notesToMidiFile(quantizeNotes(notes));
+        const quantized = yield* quantizeNotes(notes);
+        const midiBuffer = notesToMidiFile(quantized);
         const debugDir = path.join(process.cwd(), "logs");
         const debugMidiPath = path.join(debugDir, "score-debug.mid");
         const debugLyPath = path.join(debugDir, "score-debug.ly");
@@ -73,7 +75,7 @@ export class LilyPondRenderer extends ServiceMap.Service<
           ),
         );
 
-        const lyContent = notesToLilyPond(notes);
+        const lyContent = notesToLilyPond(quantized);
 
         yield* fs.writeFileString(debugLyPath, lyContent).pipe(
           Effect.mapError(

@@ -1,6 +1,5 @@
 import type { Note } from "@/lib/Domain";
 
-import { quantizeNotes } from "@/lib/lilypond/midi";
 
 interface LilyPondOptions {
   readonly tempo: number;
@@ -97,9 +96,8 @@ const buildEvents = (
   notes: readonly Note[],
   gridSize: number,
 ): readonly Event[] => {
-  const quantized = quantizeNotes(notes, gridSize);
   const grouped = new Map<string, { start: number; duration: number; pitches: number[] }>();
-  for (const note of quantized) {
+  for (const note of notes) {
     const start = roundToGrid(note.start_time, gridSize);
     const duration = roundToGrid(note.duration, gridSize);
     const key = `${String(start)}:${String(duration)}`;

@@ -43,13 +43,3 @@ export const notesToMidiFile = (
 
   return new Writer(track, { ticksPerBeat }).buildFile();
 };
-
-export const quantizeNotes = (
-  notes: readonly Note[],
-  gridSize = 1 / 16,
-): readonly Note[] =>
-  notes.map((note) => ({
-    ...note,
-    start_time: Math.round(note.start_time / gridSize) * gridSize,
-    duration: Math.round(note.duration / gridSize) * gridSize,
-  }));
