@@ -216,7 +216,6 @@ export const notesToLilyPond = (
     String.raw`  \new Staff {`,
     String.raw`    \clef treble`,
     String.raw`    \time ${String(numerator)}/${String(denominator)}`,
-    String.raw`    \tempo 4 = ${String(config.tempo)}`,
     String.raw`    \set Score.proportionalNotationDuration = #1/16`,
     String.raw`    \override Score.SpacingSpanner.strict-note-spacing = ##t`,
     `    ${body}`,

@@ -30,7 +30,7 @@ function RouteComponent() {
     new Set(),
   );
   const [deletedNoteIds, setDeletedNoteIds] = useState<Set<number>>(new Set());
-  const [readRenderToken, setReadRenderToken] = useState(0);
+  const [scoreRenderToken, setScoreRenderToken] = useState(0);
 
   const readMutation = useMutation({
     mutationFn: () => readClip(),
@@ -47,7 +47,7 @@ function RouteComponent() {
       setNotes([...(detailClip.notes ?? [])]);
       setModifiedNoteIds(new Set());
       setDeletedNoteIds(new Set());
-      setReadRenderToken((prev) => prev + 1);
+      setScoreRenderToken((prev) => prev + 1);
     },
   });
 
@@ -101,6 +101,15 @@ function RouteComponent() {
           disabled={readMutation.isPending}
         >
           {readMutation.isPending ? "Reading…" : "Read from Live"}
+        </Button>
+        <Button
+          variant="secondary"
+          onClick={() => {
+            setScoreRenderToken((prev) => prev + 1);
+          }}
+          disabled={!clipInfo || notes.length === 0}
+        >
+          Preview Score
         </Button>
         <Button
           onClick={handleWrite}
@@ -171,7 +180,7 @@ function RouteComponent() {
           notes={notes}
           timeSigNum={clipInfo.signatureNumerator}
           timeSigDen={clipInfo.signatureDenominator}
-          autoRenderToken={readRenderToken}
+          renderToken={scoreRenderToken}
         />
       )}
     </div>

@@ -1,46 +1,34 @@
 import type { Note } from "@/lib/Domain";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { Effect } from "effect";
 import { useMutation } from "@tanstack/react-query";
 
-import { Button } from "@/components/ui/button";
 import { renderLilyPondSvg } from "@/routes/api/score/-lilypond";
-import { buildVexFlowPlan } from "@/lib/vexflow/score";
+import { buildVexFlowPlan, type VexFlowPlan } from "@/lib/vexflow/score";
 
 interface ScoreDisplayProps {
   notes: readonly Note[];
   timeSigNum: number;
   timeSigDen: number;
-  autoRenderToken?: number;
+  renderToken?: number;
 }
 
 export function ScoreDisplay({
   notes,
   timeSigNum: _timeSigNum,
   timeSigDen: _timeSigDen,
-  autoRenderToken,
+  renderToken,
 }: ScoreDisplayProps) {
   const [lilypondSvg, setLilypondSvg] = useState<string | null>(null);
-  const latestNotes = useRef(notes);
+  const [vexflowPlan, setVexflowPlan] = useState<VexFlowPlan | null>(null);
   const vexflowContainerRef = useRef<HTMLDivElement | null>(null);
   const vexflowId = useId();
   const vexflowElementId = `vexflow-${vexflowId}`;
   const timeSignature = `${String(_timeSigNum)}/${String(_timeSigDen)}`;
-  const vexflowPlan = useMemo(
-    () =>
-      notes.length === 0
-        ? null
-        : Effect.runSync(
-          buildVexFlowPlan(notes, {
-            timeSignature: [_timeSigNum, _timeSigDen],
-          }),
-        ),
-    [notes, _timeSigNum, _timeSigDen],
-  );
 
-  const { mutate: renderLilypond, isPending: isLilypondLoading } = useMutation({
+  const { mutate: renderLilypond } = useMutation({
     mutationFn: async (noteData: readonly Note[]) => {
       const response = await renderLilyPondSvg({ data: { notes: noteData } });
       return await response.text();
@@ -51,13 +39,22 @@ export function ScoreDisplay({
   });
 
   useEffect(() => {
-    latestNotes.current = notes;
-  }, [notes]);
+    if (!renderToken || notes.length === 0) return;
+    renderLilypond(notes);
+  }, [renderToken, renderLilypond, notes]);
 
   useEffect(() => {
-    if (!autoRenderToken || latestNotes.current.length === 0) return;
-    renderLilypond(latestNotes.current);
-  }, [autoRenderToken, renderLilypond]);
+    if (!renderToken || notes.length === 0) {
+      setVexflowPlan(null);
+      return;
+    }
+    const plan = Effect.runSync(
+      buildVexFlowPlan(notes, {
+        timeSignature: [_timeSigNum, _timeSigDen],
+      }),
+    );
+    setVexflowPlan(plan);
+  }, [renderToken, notes, _timeSigNum, _timeSigDen]);
 
   useEffect(() => {
     const container = vexflowContainerRef.current;
@@ -78,10 +75,13 @@ export function ScoreDisplay({
         const voices = staff.voices.flatMap((voice, voiceIndex) => {
           if (voice.notes.length === 0) return [];
           const notesLine = voice.notes.join(", ");
-          const notes = score.notes(notesLine, {
+          const noteOptions: { clef: "treble" | "bass"; stem?: "up" | "down" } = {
             clef: staff.clef,
-            stem: voiceIndex % 2 === 0 ? "up" : "down",
-          });
+          };
+          if (staff.voices.length > 1) {
+            noteOptions.stem = voiceIndex % 2 === 0 ? "up" : "down";
+          }
+          const notes = score.notes(notesLine, noteOptions);
           const vfVoice = score.voice(notes, { time: timeSignature });
           vfVoice.setMode(Voice.Mode.SOFT);
           return [vfVoice];
@@ -107,17 +107,6 @@ export function ScoreDisplay({
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="flex flex-col gap-2">
           <div className="text-sm font-medium">LilyPond</div>
-          <div>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                renderLilypond(notes);
-              }}
-              disabled={isLilypondLoading}
-            >
-              {isLilypondLoading ? "Rendering..." : "Render LilyPond"}
-            </Button>
-          </div>
           <div
             className="overflow-x-auto rounded border bg-background p-4"
             dangerouslySetInnerHTML={{ __html: lilypondSvg ?? "" }}
@@ -125,7 +114,7 @@ export function ScoreDisplay({
         </div>
         <div className="flex flex-col gap-2">
           <div className="text-sm font-medium">VexFlow</div>
-          <div className="overflow-x-auto rounded border bg-background p-4">
+          <div className="overflow-x-auto rounded border bg-background p-4 [&_svg]:text-foreground [&_svg_path]:fill-current [&_svg_path]:stroke-current [&_svg_rect]:fill-current [&_svg_rect]:stroke-current [&_svg_line]:stroke-current [&_svg_circle]:fill-current [&_svg_circle]:stroke-current [&_svg_ellipse]:fill-current [&_svg_ellipse]:stroke-current [&_svg_polygon]:fill-current [&_svg_polygon]:stroke-current [&_svg_polyline]:fill-current [&_svg_polyline]:stroke-current [&_svg_text]:fill-current">
             <div id={vexflowElementId} ref={vexflowContainerRef} />
           </div>
         </div>

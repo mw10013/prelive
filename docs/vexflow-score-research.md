@@ -221,6 +221,14 @@ For VexFlow, the same beat values can map to `w/h/q/8/16/32` and dotted forms.
 
 ---
 
+## Implementation notes (current)
+
+- VexFlow stems are set per-note for single-voice staves using EasyScore options (`[stem="up"]` / `[stem="down"]`) based on average pitch vs. staff middle line.
+- For multi-voice staves, stems stay assigned by voice index for now.
+- Dark mode styling is handled via Tailwind SVG selectors on the VexFlow container, not a global class.
+
+---
+
 ## Review notes / decisions
 
 - Start with `Factory` + `EasyScore` for the simplest first pass.

@@ -147,21 +147,24 @@ const formatToken = (
   chord: string,
   token: DurationToken,
   isRest: boolean,
+  stem?: "up" | "down",
 ): string => {
   const dots = ".".repeat(token.dots);
+  const stemOption = stem ? `[stem="${stem}"]` : "";
   return isRest
-    ? `${chord}/${token.duration}/r${dots}`
-    : `${chord}/${token.duration}${dots}`;
+    ? `${chord}/${token.duration}/r${dots}${stemOption}`
+    : `${chord}/${token.duration}${dots}${stemOption}`;
 };
 
 const tokensForDuration = (
   duration: number,
   pitches: readonly number[],
   restKey: string,
+  stem?: "up" | "down",
 ): readonly string[] => {
   const parts = splitDuration(duration);
   const chord = pitches.length > 0 ? formatChord(pitches) : restKey;
-  return parts.map((part) => formatToken(chord, part, pitches.length === 0));
+  return parts.map((part) => formatToken(chord, part, pitches.length === 0, stem));
 };
 
 const buildEvents = (notes: readonly Note[], gridSize: number): readonly Event[] => {
@@ -208,10 +211,21 @@ const assignVoices = (events: readonly Event[]): readonly { readonly events: rea
   return voices.map((voice) => ({ events: voice.events }));
 };
 
+const stemForPitches = (
+  pitches: readonly number[],
+  clef: "treble" | "bass",
+): "up" | "down" => {
+  const average = pitches.reduce((sum, pitch) => sum + pitch, 0) / pitches.length;
+  const middleLine = clef === "treble" ? 71 : 50;
+  return average >= middleLine ? "down" : "up";
+};
+
 const voiceToTokens = (
   events: readonly Event[],
   totalEnd: number,
   restKey: string,
+  clef: "treble" | "bass",
+  useExplicitStems: boolean,
 ): readonly string[] => {
   const tokens: string[] = [];
   let cursor = 0;
@@ -220,7 +234,10 @@ const voiceToTokens = (
       const restDuration = event.start - cursor;
       tokens.push(...tokensForDuration(restDuration, [], restKey));
     }
-    tokens.push(...tokensForDuration(event.duration, event.pitches, restKey));
+    const stem = useExplicitStems && event.pitches.length > 0
+      ? stemForPitches(event.pitches, clef)
+      : undefined;
+    tokens.push(...tokensForDuration(event.duration, event.pitches, restKey, stem));
     cursor = event.start + event.duration;
   }
   if (cursor + epsilon < totalEnd) {
@@ -263,8 +280,9 @@ export const buildVexFlowPlan = Effect.fn("VexFlowScore.buildVexFlowPlan")(
         const voices = assignVoices(staff.events);
         const totalEnd = Math.max(0, ...staff.events.map((event) => event.start + event.duration));
         const restKey = staff.clef === "bass" ? "d3" : "b4";
+        const useExplicitStems = voices.length === 1;
         const voicePlans = voices.map((voice) => ({
-          notes: voiceToTokens(voice.events, totalEnd, restKey),
+          notes: voiceToTokens(voice.events, totalEnd, restKey, staff.clef, useExplicitStems),
         }));
         return { clef: staff.clef, voices: voicePlans };
       });
