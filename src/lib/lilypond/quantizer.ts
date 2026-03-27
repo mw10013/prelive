@@ -17,6 +17,8 @@ interface QuantizationConfig {
   readonly dottedGridTolerance: number;
   readonly endGrid: number;
   readonly endGridTolerance: number;
+  readonly endStrongGrid: number;
+  readonly endStrongTolerance: number;
   readonly clampToNextOnset: boolean;
   readonly endClampTolerance: number;
   readonly normalizeGrid: number;
@@ -49,6 +51,8 @@ const defaultQuantizationConfig: QuantizationConfig = {
   dottedGridTolerance: 1 / 64,
   endGrid: 1 / 16,
   endGridTolerance: 1 / 64,
+  endStrongGrid: 1 / 4,
+  endStrongTolerance: 1 / 8,
   clampToNextOnset: true,
   endClampTolerance: 1 / 8,
   normalizeGrid: 1 / 1024,
@@ -141,10 +145,13 @@ const quantizeDuration = (
   const selected = selectDuration(rawDuration, start, config);
   const endPre = start + selected;
   const endSnapped = snapToGrid(endPre, config.endGrid, config.endGridTolerance) ?? endPre;
-  const endClamped = config.clampToNextOnset && nextStart !== undefined &&
-      isClose(endSnapped, nextStart, config.endClampTolerance)
-    ? nextStart
+  const endStrong = nextStart === undefined
+    ? (snapToGrid(endSnapped, config.endStrongGrid, config.endStrongTolerance) ?? endSnapped)
     : endSnapped;
+  const endClamped = config.clampToNextOnset && nextStart !== undefined &&
+      isClose(endStrong, nextStart, config.endClampTolerance)
+    ? nextStart
+    : endStrong;
   const duration = Math.max(endClamped - start, config.durationGrid);
   return normalize(duration, config.normalizeGrid);
 };
