@@ -221,19 +221,34 @@ For VexFlow, the same beat values can map to `w/h/q/8/16/32` and dotted forms.
 
 ---
 
-## Open questions for iteration
+## Review notes / decisions
 
-- Start with EasyScore or low-level `StaveNote` API?
+- Start with `Factory` + `EasyScore` for the simplest first pass.
+- Quantization: reuse the LilyPond quantizer with VexFlow-specific config overrides; split into a dedicated quantizer only if tuning diverges materially.
+- Staff selection: case-by-case; keyboard material likely needs treble+bass split, single-line clips can stay on one staff.
 
-try simplest first.
+---
 
-- Reuse LilyPond quantization config as-is or tune it for VexFlow
-  rendering?
+## Implementation guidance (Effect v4)
 
-should we have separate implementation of quantization for vexflow since we may need to tune a lot in different ways from lilypond?
+From `refs/effect4/ai-docs/src/01_effect/01_basics/02_effect-fn.ts`:
 
-- Single staff or split to treble/bass for dense material?
+```
+When writing functions that return an Effect, use `Effect.fn` to use the
+generator syntax.
 
-case by case basis. keyboard note lists containing both treble and bass notes will need split staff. clip containing just a line probably will need only one.
+**Avoid creating functions that return an Effect.gen**, use `Effect.fn`
+instead.
+```
 
-implementation should be use effect v4 function and idiomatic patterns so scan refs/effect4 to ground your understanding
+```
+// Pass a string to Effect.fn, which will improve stack traces and also
+// attach a tracing span (using Effect.withSpan behind the scenes).
+//
+// The name string should match the function name.
+```
+
+```
+// Add additional functionality by passing in additional arguments.
+// **Do not** use .pipe with Effect.fn
+```
