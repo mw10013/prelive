@@ -16,6 +16,12 @@
 ### signature_denominator int observe
 ```
 
+### Clip.get_notes_extended (region query)
+
+```
+Returns a dictionary of notes that have their start times in the given area...
+```
+
 ## LiveQL today (current schema coverage)
 
 From `refs/liveql/liveql-n4m.js`:
@@ -55,6 +61,20 @@ From the repo’s LOM notes, `Clip.notes` is backed by `get_notes_extended` with
 get_notes_extended(id, 0, 128, 0, parent.length)
 ```
 
+In the resolver this is implemented as:
+
+```
+const data = await getNotesExtended(parent, {
+  id: parent.id,
+  from_pitch: 0,
+  pitch_span: 128,
+  from_time: 0,
+  time_span: parent.length,
+});
+```
+
+Why the limit exists: `get_notes_extended` is explicitly a region query, so the resolver chooses the clip’s length as the region to avoid an unbounded fetch and to return a predictable, bounded note list.
+
 This means score rendering can miss notes outside the current `0..clip.length` span unless we expose `get_all_notes_extended`.
 
 ## What is needed in LiveQL for score rendering
@@ -66,6 +86,11 @@ This means score rendering can miss notes outside the current `0..clip.length` s
 ### 2) Clip time signature
 
 - Expose `Clip.signature_numerator` and `Clip.signature_denominator` (already present in the schema) as the meter for barlines and beaming.
+
+## Quantization for notation (app-side)
+
+- Use an app-defined grid (e.g. 1/16) and round durations to clean values (quarter, eighth, etc.).
+- This does not require any LOM quantization settings or clip-level quantize calls.
 
 ## Minimal LiveQL additions (concrete list)
 
