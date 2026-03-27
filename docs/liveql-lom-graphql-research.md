@@ -172,9 +172,8 @@ Everything is traversed from `live_set`. One query fetches the entire object tre
 }
 ```
 
-- Resolves by calling `get_notes_extended(id, 0, 128, 0, clip.length)`
+- Resolves by calling `get_all_notes_extended(id)` — returns all notes regardless of loop boundaries
 - Returns notes sorted by start_time, then pitch
-- **Caveat**: only covers `0..clip.length`. Notes in loop iterations beyond initial length are missed.
 
 **Approach B — explicit `clip_get_notes_extended` mutation:**
 
@@ -355,13 +354,11 @@ mutation {
 | `Clip.is_playing`             | Can't show playback state per clip         | Clip property (observe)            |
 | `Clip.loop_start`, `loop_end` | Can't control loop boundaries              | Clip properties                    |
 | `Clip.color`                  | Can't display clip colors                  | Clip property                      |
-| `Clip.get_all_notes_extended` | Current `Clip.notes` may miss looped notes | Clip function                      |
 | `Clip.quantize`               | Can't quantize notes                       | Clip function                      |
 | `Clip.duplicate_loop`         | Can't duplicate loop                       | Clip function                      |
 
 ### Critical for a note editor
 
-- **`get_all_notes_extended`**: The current `Clip.notes` resolver uses `get_notes_extended(0, 128, 0, clip.length)`. If a clip loops, notes beyond `clip.length` are invisible. A note editor likely needs `get_all_notes_extended` or must handle looping explicitly.
 - **`tempo`**: Needed to convert between beats and time for display.
 - **`current_song_time`**: Needed to show playhead position in the editor.
 - **`Clip.is_playing`**: Needed to show which clip is currently playing.
@@ -392,7 +389,7 @@ All mutations in liveql return the refreshed object (e.g., `clip_add_new_notes` 
 
 ### GraphQL Query Cost
 
-- `Clip.notes` on a clip with 1000 notes = `get_notes_extended(0, 128, 0, length)` → all 1000 notes round-tripped through Max IPC
+- `Clip.notes` on a clip with 1000 notes = `get_all_notes_extended` → all 1000 notes round-tripped through Max IPC
 - Consider: initial load fetches all notes, subsequent edits use `clip_apply_note_modifications` (sends only changed notes, returns full clip)
 
 ### Boolean Coercion
@@ -413,24 +410,18 @@ All mutations in liveql return the refreshed object (e.g., `clip_add_new_notes` 
 
 Priority order for note editor use case:
 
-1. **`get_all_notes_extended`** on Clip — critical for looped clips
-2. **`tempo`** on Song — display timing context
-3. **`current_song_time`** on Song — playhead tracking
-4. **`is_playing`** on Clip — playback state indicator
-5. **`loop_start`**, **`loop_end`** on Clip — loop boundary editing
-6. **`quantize`** on Clip — note quantization
-7. **`color`** on Track and Clip — visual differentiation
+1. **`tempo`** on Song — display timing context
+2. **`current_song_time`** on Song — playhead tracking
+3. **`is_playing`** on Clip — playback state indicator
+4. **`loop_start`**, **`loop_end`** on Clip — loop boundary editing
+5. **`quantize`** on Clip — note quantization
+6. **`color`** on Track and Clip — visual differentiation
 
 ---
 
 ## Summary
 
-**liveql gives us a solid foundation for a note editor.** The current schema covers the core workflow: navigate to a clip, read its notes, add/modify/remove notes, fire clips, control transport. The `Clip.notes` convenience field is slightly limited for looping clips but workable for an MVP.
+**liveql gives us a solid foundation for a note editor.** The current schema covers the core workflow: navigate to a clip, read its notes, add/modify/remove notes, fire clips, control transport. `Clip.notes` returns all notes via `get_all_notes_extended`, including notes in loop iterations.
 
 **The main app architecture** should be: TanStack Query manages caching and invalidation of GraphQL queries. The user selects a clip in Ableton (via `detail_clip`), the app fetches its notes, renders a piano roll, and writes mutations back through liveql. Effect Schemas validate all wire data.
 
-**Key decisions needed:**
-
-- How to handle note editing UX (batch mutations vs. per-edit)
-- Whether to extend liveql's schema (e.g., `get_all_notes_extended`) or work within current limits
-- How often to poll/stream playhead position (`current_song_time`) — requires liveql extension

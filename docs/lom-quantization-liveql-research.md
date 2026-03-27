@@ -47,41 +47,22 @@ type Mutation {
   clip_fire(id: Int!): Clip
   clip_get_notes_extended(...): NotesDictionary!
   clip_get_selected_notes_extended(id: Int!): NotesDictionary!
+  clip_get_all_notes_extended(id: Int!): NotesDictionary!
   clip_select_all_notes(id: Int!): Clip
   clip_remove_notes_by_id(id: Int!, ids: [Int!]!): Clip
   clip_remove_notes_extended(...): Clip
 }
 ```
 
-There is no access to full note range today, and `Clip.notes` is synthetic.
+`Clip.notes` is a synthetic field backed by `get_all_notes_extended(id)` — returns all notes regardless of loop boundaries, sorted by start_time then pitch.
 
-From the repo’s LOM notes, `Clip.notes` is backed by `get_notes_extended` with a time span limited to `0..clip.length`:
-
-```
-get_notes_extended(id, 0, 128, 0, parent.length)
-```
-
-In the resolver this is implemented as:
-
-```
-const data = await getNotesExtended(parent, {
-  id: parent.id,
-  from_pitch: 0,
-  pitch_span: 128,
-  from_time: 0,
-  time_span: parent.length,
-});
-```
-
-Why the limit exists: `get_notes_extended` is explicitly a region query, so the resolver chooses the clip’s length as the region to avoid an unbounded fetch and to return a predictable, bounded note list.
-
-This means score rendering can miss notes outside the current `0..clip.length` span unless we expose `get_all_notes_extended`.
+The `clip_get_all_notes_extended` mutation is also available for explicit queries. The region-bounded `clip_get_notes_extended` mutation remains available for sub-range queries when performance is a concern.
 
 ## What is needed in LiveQL for score rendering
 
 ### 1) Notes (full range)
 
-- Expose `clip_get_all_notes_extended` so the renderer can get all notes, not just those inside `0..clip.length`.
+- `clip_get_all_notes_extended` is now exposed in the schema. `Clip.notes` uses it by default.
 
 ### 2) Clip time signature
 
@@ -92,7 +73,3 @@ This means score rendering can miss notes outside the current `0..clip.length` s
 - Use an app-defined grid (e.g. 1/16) and round durations to clean values (quarter, eighth, etc.).
 - This does not require any LOM quantization settings or clip-level quantize calls.
 
-## Minimal LiveQL additions (concrete list)
-
-- Query/mutation: `clip_get_all_notes_extended`.
-- `Clip` time signature is already in the schema, keep it as-is.

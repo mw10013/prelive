@@ -12,7 +12,7 @@ Verified from `refs/liveql/liveql-n4m.js` schema and resolvers.
 
 ### Reading a clip and its notes — one query
 
-`SongView.detail_clip` is in the schema (line 106). `Clip.notes` is a field (line 137) backed by a resolver that calls `get_notes_extended(id, 0, 128, 0, clip.length)` and returns `[Note!]` sorted by start_time then pitch. No mutation needed for reading.
+`SongView.detail_clip` is in the schema (line 106). `Clip.notes` is a field (line 137) backed by a resolver that calls `get_all_notes_extended(id)` and returns `[Note!]` sorted by start_time then pitch. Returns all notes regardless of loop boundaries. No mutation needed for reading.
 
 ```graphql
 {
@@ -39,8 +39,6 @@ Verified from `refs/liveql/liveql-n4m.js` schema and resolvers.
 ```
 
 Returns `null` for `detail_clip` if no clip is open in Live's Detail View. Returns `null` for `notes` if not a MIDI clip.
-
-**Caveat**: `Clip.notes` queries `0..clip.length`. Notes in loop iterations beyond the initial length are missed. Acceptable for MVP.
 
 ### Writing notes — three mutations
 
@@ -335,7 +333,7 @@ export const ClipWithNotes = Schema.Struct({
 
 | Decision        | Choice                                       | Why                                                          |
 | --------------- | -------------------------------------------- | ------------------------------------------------------------ |
-| Read notes      | `Clip.notes` field, no mutation              | Resolver handles `get_notes_extended` internally. One query. |
+| Read notes      | `Clip.notes` field, no mutation              | Resolver handles `get_all_notes_extended` internally. One query. |
 | Write notes     | Three mutations (add/modify/remove)          | Matches liveql schema exactly                                |
 | Read trigger    | `useMutation`, not `useQuery`                | Imperative button press, not polling                         |
 | Write → re-read | `onSuccess` calls `readMutation.mutate`      | New notes get real `note_id`s from Live                      |
