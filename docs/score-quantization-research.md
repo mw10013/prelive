@@ -94,6 +94,7 @@ const splitDuration = (beats) => {
 
 - Default grid: 1/16 note.
 - Snap start_time to nearest grid with tolerance; values within tolerance of a grid line snap cleanly.
+- Prefer stronger beats when close: attempt {1/4, 1/8} snaps first, then fall back to 1/16.
 - Optionally infer grid from note-start deltas by choosing the closest of {1/4, 1/8, 1/16, 1/32}.
 
 ### 2) Duration quantization (heuristic, value set)
@@ -104,6 +105,7 @@ const splitDuration = (beats) => {
   - Tuplets off by default; enable only if the clip clearly uses triplets.
 - If a duration is within tolerance of an allowed value, snap to it.
 - Otherwise snap to nearest grid and let existing tie-splitting handle longer spans.
+- Optional clamp: if the next onset in the same voice is within tolerance of the computed end, clamp end to that onset.
 
 ### 3) End alignment heuristics
 
@@ -125,17 +127,33 @@ const splitDuration = (beats) => {
 
 - Tolerance thresholds for start_time vs duration snapping.
 
-I don't know what they should be. i guess we can start off with constants that we tune. Thoughts?
+Start with constants and tune. Proposal:
+
+- Start-time tolerances: strong beats (1/4 or 1/8) within 1/32 beat, base grid (1/16) within 1/64 beat.
+- Duration tolerances: within 1/64 beat for allowed values; allow a looser 1/48 beat for long values (>= 1 beat).
+- End clamp tolerance: 1/64 beat to avoid overlaps without swallowing intentional gaps.
 
 - Whether to allow dotted values by default or only when clearly intended.
 
-Clearly indicated. But I'm not sure how they would be clearly inidcated. More research here.
+Suggestion: only allow dotted when both start and end align to the same 1/8 grid and the duration is within tolerance of {3/8, 3/4, 3/2}. Otherwise prefer straight values and ties.
 
 - How to detect triplet usage in a clip without explicit metadata.
 
 Defer
 
-We want to use effect v4 for the implementation. scan refs/effect4 to ground your understanding.
+We want to use effect v4 for the implementation.
+
+Effect v4 guidance from `refs/effect4/ai-docs/src/01_effect/01_basics/index.md`:
+
+```
+Prefer writing Effect code with Effect.gen & Effect.fn("name"). Then attach additional behaviour with combinators.
+```
+
+Effect v4 guidance from `refs/effect4/ai-docs/src/01_effect/02_services/index.md`:
+
+```
+Effect services are the most common way to structure Effect code. Prefer using services to encapsulate behaviour...
+```
 
 ---
 
