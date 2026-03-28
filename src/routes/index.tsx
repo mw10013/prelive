@@ -27,6 +27,7 @@ export const Route = createFileRoute("/")({
 function RouteComponent() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [clipInfo, setClipInfo] = useState<ClipInfo | null>(null);
+  const [trackName, setTrackName] = useState<string | null>(null);
   const [modifiedNoteIds, setModifiedNoteIds] = useState<Set<number>>(
     new Set(),
   );
@@ -38,6 +39,7 @@ function RouteComponent() {
     onSuccess: (data) => {
       const detailClip = data.live_set.view.detail_clip;
       if (!detailClip) return;
+      setTrackName(data.live_set.view.selected_track?.name ?? null);
       setClipInfo({
         id: detailClip.id,
         name: detailClip.name,
@@ -128,6 +130,7 @@ function RouteComponent() {
         </Button>
         {clipInfo && (
           <span className="ml-auto text-sm text-muted-foreground">
+            {trackName && <>{trackName} / </>}
             {clipInfo.name} — {clipInfo.path} ({clipInfo.length} beats)
           </span>
         )}

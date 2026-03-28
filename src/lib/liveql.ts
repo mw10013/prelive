@@ -6,7 +6,7 @@ import { gql } from "@/lib/gql";
 
 export const readClip = createServerFn({ method: "GET" }).handler(async () => {
   return gql(
-    `{ live_set { view { detail_clip {
+    `{ live_set { view { selected_track { name } detail_clip {
         id name path length is_midi_clip
         signature_numerator signature_denominator
         notes { note_id pitch start_time duration velocity mute probability velocity_deviation release_velocity }
@@ -14,6 +14,7 @@ export const readClip = createServerFn({ method: "GET" }).handler(async () => {
     Schema.Struct({
       live_set: Schema.Struct({
         view: Schema.Struct({
+          selected_track: Schema.NullOr(Schema.Struct({ name: Schema.String })),
           detail_clip: Schema.NullOr(Domain.ClipWithNotes),
         }),
       }),
