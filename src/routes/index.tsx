@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -7,7 +7,7 @@ import { NoteTable } from "@/components/NoteTable";
 import { ScoreDisplay } from "@/components/ScoreDisplay";
 import { Button } from "@/components/ui/button";
 import { type Note } from "@/lib/Domain";
-import { readClip, writeNotes } from "@/lib/liveql";
+import { readClip, togglePlay, writeNotes } from "@/lib/liveql";
 
 interface ClipInfo {
   id: number;
@@ -61,6 +61,32 @@ function RouteComponent() {
       readMutation.mutate();
     },
   });
+
+  const { mutate: togglePlayMutate, isPending: isTogglePlayPending } =
+    useMutation({ mutationFn: togglePlay });
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.code !== "Space" || event.repeat) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(
+            target.tagName,
+          ))
+      )
+        return;
+      event.preventDefault();
+      if (!isTogglePlayPending) {
+        togglePlayMutate({ data: {} });
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => {
+      window.removeEventListener("keydown", handler);
+    };
+  }, [isTogglePlayPending, togglePlayMutate]);
 
   const handleWrite = () => {
     if (!clipInfo) return;

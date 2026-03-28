@@ -22,6 +22,42 @@ export const readClip = createServerFn({ method: "GET" }).handler(async () => {
   );
 });
 
+export const togglePlay = createServerFn({ method: "POST" })
+  .inputValidator((data: Record<string, never>) => data)
+  .handler(async () => {
+    const { live_set } = await gql(
+      `{ live_set { id is_playing } }`,
+      Schema.Struct({
+        live_set: Schema.Struct({
+          id: Schema.Number,
+          is_playing: Schema.Boolean,
+        }),
+      }),
+    );
+    if (live_set.is_playing) {
+      const result = await gql(
+        `mutation($id: Int!) { song_stop_playing(id: $id) { is_playing } }`,
+        Schema.Struct({
+          song_stop_playing: Schema.NullOr(
+            Schema.Struct({ is_playing: Schema.Boolean }),
+          ),
+        }),
+        { id: live_set.id },
+      );
+      return result.song_stop_playing?.is_playing ?? false;
+    }
+    const result = await gql(
+      `mutation($id: Int!) { song_start_playing(id: $id) { is_playing } }`,
+      Schema.Struct({
+        song_start_playing: Schema.NullOr(
+          Schema.Struct({ is_playing: Schema.Boolean }),
+        ),
+      }),
+      { id: live_set.id },
+    );
+    return result.song_start_playing?.is_playing ?? true;
+  });
+
 interface WriteNotesInput {
   clipId: number;
   newNotes: Domain.NoteInput[];
