@@ -174,11 +174,21 @@ const endClamped = config.clampToNextOnset && nextStart !== undefined &&
 
 ---
 
+## Rest beat grouping (implementation)
+
+- Rests are split at beat boundaries to preserve the pulse in notation.
+- Example (4/4): rest from 0.25 to 1.25 becomes 8. + 16 rather than a single 4.
+- Beat length is derived from the time signature denominator (4 / denominator).
+- Implemented in both renderers during rest tokenization.
+
+---
+
 ## Expected impact
 
 - Cleaner rhythmic values (quarters, eighths, sixteenths) instead of dotted chains.
 - Consistent bar alignment without sacrificing EDM timing feel.
 - Better chord display because notes that should align share starts and similar durations.
+- Rests read closer to standard engraving conventions in simple meters.
 
 ---
 
@@ -188,6 +198,7 @@ const endClamped = config.clampToNextOnset && nextStart !== undefined &&
 - Whether dotted gating (1/8 alignment) should be configurable per clip.
 - Whether next-onset clamping should be disabled for legato passages.
 - Triplet detection remains unimplemented.
+- Whether compound meters need an explicit beat grouping override for rest splitting.
 
 ---
 

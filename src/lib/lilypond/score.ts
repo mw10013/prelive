@@ -83,6 +83,27 @@ const splitDuration = (beats: number): readonly string[] => {
   return tokens.length > 0 ? tokens : ["64"];
 };
 
+const splitRestDuration = (
+  start: number,
+  duration: number,
+  beatLength: number,
+  gridSize: number,
+): readonly number[] => {
+  const parts: number[] = [];
+  let remaining = duration;
+  let cursor = roundToGrid(start, gridSize);
+  while (remaining > epsilon) {
+    const beatIndex = Math.floor((cursor + epsilon) / beatLength);
+    const nextBeat = roundToGrid((beatIndex + 1) * beatLength, gridSize);
+    const untilNextBeat = roundToGrid(nextBeat - cursor, gridSize);
+    const segment = untilNextBeat > epsilon ? Math.min(remaining, untilNextBeat) : remaining;
+    parts.push(segment);
+    cursor = roundToGrid(cursor + segment, gridSize);
+    remaining = roundToGrid(remaining - segment, gridSize);
+  }
+  return parts;
+};
+
 const formatChord = (pitches: readonly number[], tie: boolean): string => {
   if (pitches.length === 1) {
     const pitch = pitches[0];
@@ -155,22 +176,36 @@ const tokensForDuration = (
   return tokens;
 };
 
+const tokensForRestDuration = (
+  start: number,
+  duration: number,
+  beatLength: number,
+  gridSize: number,
+): readonly string[] => {
+  const segments = splitRestDuration(start, duration, beatLength, gridSize);
+  const tokens: string[] = [];
+  for (const segment of segments) tokens.push(...tokensForDuration(segment, []));
+  return tokens;
+};
+
 const voiceToTokens = (
   events: readonly Event[],
   totalEnd: number,
+  beatLength: number,
+  gridSize: number,
 ): readonly string[] => {
   const tokens: string[] = [];
   let cursor = 0;
   for (const event of events) {
     if (event.start > cursor + epsilon) {
       const restDuration = event.start - cursor;
-      tokens.push(...tokensForDuration(restDuration, []));
+      tokens.push(...tokensForRestDuration(cursor, restDuration, beatLength, gridSize));
     }
     tokens.push(...tokensForDuration(event.duration, event.pitches));
     cursor = event.start + event.duration;
   }
   if (cursor + epsilon < totalEnd) {
-    tokens.push(...tokensForDuration(totalEnd - cursor, []));
+    tokens.push(...tokensForRestDuration(cursor, totalEnd - cursor, beatLength, gridSize));
   }
   return tokens;
 };
@@ -181,6 +216,7 @@ export const notesToLilyPond = (
 ): string => {
   const config: LilyPondOptions = { ...defaultOptions, ...options };
   const [numerator, denominator] = config.timeSignature;
+  const beatLength = 4 / denominator;
   const measureLength = numerator * (4 / denominator);
   const events = buildEvents(notes, config.gridSize);
   const totalEnd = Math.max(
@@ -193,7 +229,7 @@ export const notesToLilyPond = (
   );
   const voices = assignVoices(events);
   const voiceTokens = voices.map((voice) =>
-    voiceToTokens(voice.events, roundedEnd).join(" "),
+    voiceToTokens(voice.events, roundedEnd, beatLength, config.gridSize).join(" "),
   );
   const voiceCommands = [
     String.raw`\voiceOne`,

@@ -145,6 +145,27 @@ const splitDuration = (beats: number): readonly DurationToken[] => {
     : [{ beats: 0.25, duration: "16", dots: 0 }];
 };
 
+const splitRestDuration = (
+  start: number,
+  duration: number,
+  beatLength: number,
+  gridSize: number,
+): readonly number[] => {
+  const parts: number[] = [];
+  let remaining = duration;
+  let cursor = roundToGrid(start, gridSize);
+  while (remaining > epsilon) {
+    const beatIndex = Math.floor((cursor + epsilon) / beatLength);
+    const nextBeat = roundToGrid((beatIndex + 1) * beatLength, gridSize);
+    const untilNextBeat = roundToGrid(nextBeat - cursor, gridSize);
+    const segment = untilNextBeat > epsilon ? Math.min(remaining, untilNextBeat) : remaining;
+    parts.push(segment);
+    cursor = roundToGrid(cursor + segment, gridSize);
+    remaining = roundToGrid(remaining - segment, gridSize);
+  }
+  return parts;
+};
+
 const notesForDuration = (
   duration: number,
   pitches: readonly number[],
@@ -163,6 +184,19 @@ const notesForDuration = (
     type: isRest ? "r" : undefined,
     stem: isRest ? undefined : stem,
   }));
+};
+
+const notesForRestDuration = (
+  start: number,
+  duration: number,
+  beatLength: number,
+  gridSize: number,
+  restKey: string,
+): readonly VexFlowNoteSpec[] => {
+  const segments = splitRestDuration(start, duration, beatLength, gridSize);
+  const notes: VexFlowNoteSpec[] = [];
+  for (const segment of segments) notes.push(...notesForDuration(segment, [], restKey));
+  return notes;
 };
 
 const buildEvents = (notes: readonly Note[], gridSize: number): readonly Event[] => {
@@ -224,13 +258,15 @@ const voiceToNotes = (
   restKey: string,
   clef: "treble" | "bass",
   useExplicitStems: boolean,
+  beatLength: number,
+  gridSize: number,
 ): readonly VexFlowNoteSpec[] => {
   const notes: VexFlowNoteSpec[] = [];
   let cursor = 0;
   for (const event of events) {
     if (event.start > cursor + epsilon) {
       const restDuration = event.start - cursor;
-      notes.push(...notesForDuration(restDuration, [], restKey));
+      notes.push(...notesForRestDuration(cursor, restDuration, beatLength, gridSize, restKey));
     }
     const stem = useExplicitStems && event.pitches.length > 0
       ? stemForPitches(event.pitches, clef)
@@ -239,7 +275,7 @@ const voiceToNotes = (
     cursor = event.start + event.duration;
   }
   if (cursor + epsilon < totalEnd) {
-    notes.push(...notesForDuration(totalEnd - cursor, [], restKey));
+    notes.push(...notesForRestDuration(cursor, totalEnd - cursor, beatLength, gridSize, restKey));
   }
   return notes;
 };
@@ -278,13 +314,22 @@ export const buildVexFlowPlan = Effect.fn("VexFlowScore.buildVexFlowPlan")(
       const config: VexFlowOptions = { ...defaultOptions, ...options };
       const quantized = yield* quantizeNotes(notes, config.quantization);
       const events = buildEvents(quantized, config.gridSize);
+      const beatLength = 4 / config.timeSignature[1];
       const staves = splitByClef(events, config.splitPoint).map((staff) => {
         const voices = assignVoices(staff.events);
         const totalEnd = Math.max(0, ...staff.events.map((event) => event.start + event.duration));
         const restKey = staff.clef === "bass" ? "d/3" : "b/4";
         const useExplicitStems = voices.length === 1;
         const voicePlans = voices.map((voice) => ({
-          notes: voiceToNotes(voice.events, totalEnd, restKey, staff.clef, useExplicitStems),
+          notes: voiceToNotes(
+            voice.events,
+            totalEnd,
+            restKey,
+            staff.clef,
+            useExplicitStems,
+            beatLength,
+            config.gridSize,
+          ),
         }));
         return { clef: staff.clef, voices: voicePlans };
       });
