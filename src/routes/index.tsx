@@ -12,6 +12,7 @@ import { readClip, writeNotes } from "@/lib/liveql";
 interface ClipInfo {
   id: number;
   name: string;
+  path: string;
   length: number;
   signatureNumerator: number;
   signatureDenominator: number;
@@ -40,6 +41,7 @@ function RouteComponent() {
       setClipInfo({
         id: detailClip.id,
         name: detailClip.name,
+        path: detailClip.path,
         length: detailClip.length,
         signatureNumerator: detailClip.signature_numerator,
         signatureDenominator: detailClip.signature_denominator,
@@ -126,7 +128,7 @@ function RouteComponent() {
         </Button>
         {clipInfo && (
           <span className="ml-auto text-sm text-muted-foreground">
-            {clipInfo.name} ({clipInfo.length} beats)
+            {clipInfo.name} — {clipInfo.path} ({clipInfo.length} beats)
           </span>
         )}
       </div>

@@ -7,7 +7,7 @@ import { gql } from "@/lib/gql";
 export const readClip = createServerFn({ method: "GET" }).handler(async () => {
   return gql(
     `{ live_set { view { detail_clip {
-        id name length is_midi_clip
+        id name path length is_midi_clip
         signature_numerator signature_denominator
         notes { note_id pitch start_time duration velocity mute probability velocity_deviation release_velocity }
       } } } }`,

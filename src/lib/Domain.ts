@@ -72,6 +72,7 @@ export const NoteInput = Schema.Struct({
 export const ClipWithNotes = Schema.Struct({
   id: Schema.Number,
   name: Schema.String,
+  path: Schema.String,
   length: Schema.Number,
   is_midi_clip: Schema.Boolean,
   signature_numerator: Schema.Number,
