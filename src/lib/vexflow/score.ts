@@ -3,6 +3,7 @@ import type { Note } from "@/lib/Domain";
 import { Effect } from "effect";
 
 import { quantizeNotes } from "@/lib/lilypond/quantizer";
+import { decideStaffSystem } from "@/lib/score/staffDecision";
 
 interface VexFlowOptions {
   readonly tempo: number;
@@ -316,7 +317,17 @@ export const buildVexFlowPlan = Effect.fn("VexFlowScore.buildVexFlowPlan")(
       const events = buildEvents(quantized, config.gridSize);
       const beatLength = 4 / config.timeSignature[1];
       const measureLength = config.timeSignature[0] * beatLength;
-      const staves = splitByClef(events, config.splitPoint).map((staff) => {
+      const staffDecision = decideStaffSystem(quantized, { splitPoint: config.splitPoint });
+      let staffGroups: readonly { readonly clef: "treble" | "bass"; readonly events: readonly Event[] }[] = [];
+      if (events.length > 0) {
+        staffGroups = staffDecision.system === "grand"
+          ? splitByClef(events, staffDecision.splitPoint)
+          : [{
+            clef: staffDecision.system === "single-bass" ? "bass" : "treble",
+            events,
+          }];
+      }
+      const staves = staffGroups.map((staff) => {
         const voices = assignVoices(staff.events);
         const maxEnd = Math.max(0, ...staff.events.map((event) => event.start + event.duration));
         const totalEnd = Math.max(

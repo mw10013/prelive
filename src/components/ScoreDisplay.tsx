@@ -139,7 +139,7 @@ export function ScoreDisplay({
         );
         if (voices.length === 0) return;
         const formatter = new Formatter();
-        formatter.joinVoices(voices).formatToStave(voices, stave, { alignRests: true });
+        formatter.joinVoices(voices).formatToStave(voices, stave, { alignRests: false });
         voices.forEach((voice) => {
           voice.draw(ctx, stave);
         });

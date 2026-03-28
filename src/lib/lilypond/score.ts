@@ -1,10 +1,11 @@
 import type { Note } from "@/lib/Domain";
 
-
+import { decideStaffSystem } from "@/lib/score/staffDecision";
 interface LilyPondOptions {
   readonly tempo: number;
   readonly timeSignature: readonly [number, number];
   readonly gridSize: number;
+  readonly splitPoint: number;
 }
 
 interface Event {
@@ -21,6 +22,7 @@ const defaultOptions: LilyPondOptions = {
   tempo: 120,
   timeSignature: [4, 4],
   gridSize: 1 / 16,
+  splitPoint: 60,
 };
 
 const noteNames = [
@@ -237,20 +239,50 @@ export const notesToLilyPond = (
     String.raw`\voiceThree`,
     String.raw`\voiceFour`,
   ];
-  const body = voiceTokens.length > 1
-    ? `<< ${voiceTokens
-      .map((line, index) => {
-        const command = voiceCommands[index] ?? String.raw`\voiceOne`;
-        return `{ ${command} ${line} }`;
-      })
-      .join(String.raw` \\ `)} >>`
-    : (voiceTokens[0] ?? "r1");
+  const staffDecision = decideStaffSystem(notes, { splitPoint: config.splitPoint });
+  const autoChangePitch = pitchToLily(staffDecision.splitPoint);
+  const voiceBlocks = voiceTokens.map((line, index) => {
+    const command = voiceCommands[index] ?? String.raw`\voiceOne`;
+    if (staffDecision.system === "grand") {
+      return `{ ${command} \\autoChange ${autoChangePitch} { ${line} } }`;
+    }
+    return `{ ${command} ${line} }`;
+  });
+  let body = voiceTokens[0] ?? "r1";
+  if (voiceTokens.length > 1) {
+    body = `<< ${voiceBlocks.join(String.raw` \\ `)} >>`;
+  } else if (staffDecision.system === "grand") {
+    body = `\\autoChange ${autoChangePitch} { ${voiceTokens[0] ?? "r1"} }`;
+  }
+  const clef = staffDecision.system === "single-bass" ? "bass" : "treble";
+  if (staffDecision.system === "grand") {
+    return [
+      String.raw`\version "2.24.4"`,
+      "",
+      String.raw`\score {`,
+      String.raw`  \new PianoStaff <<`,
+      String.raw`    \new Staff = "up" {`,
+      String.raw`      \clef treble`,
+      String.raw`      \time ${String(numerator)}/${String(denominator)}`,
+      String.raw`      \set Score.proportionalNotationDuration = #1/16`,
+      String.raw`      \override Score.SpacingSpanner.strict-note-spacing = ##t`,
+      `      ${body}`,
+      String.raw`    }`,
+      String.raw`    \new Staff = "down" {`,
+      String.raw`      \clef bass`,
+      String.raw`    }`,
+      String.raw`  >>`,
+      String.raw`  \layout {}`,
+      String.raw`  \midi {}`,
+      "}",
+    ].join("\n");
+  }
   return [
     String.raw`\version "2.24.4"`,
     "",
     String.raw`\score {`,
     String.raw`  \new Staff {`,
-    String.raw`    \clef treble`,
+    String.raw`    \clef ${clef}`,
     String.raw`    \time ${String(numerator)}/${String(denominator)}`,
     String.raw`    \set Score.proportionalNotationDuration = #1/16`,
     String.raw`    \override Score.SpacingSpanner.strict-note-spacing = ##t`,
