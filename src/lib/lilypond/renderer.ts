@@ -70,13 +70,6 @@ export class LilyPondRenderer extends ServiceMap.Service<
           ),
         );
 
-        const debugSvgPath = path.join(process.cwd(), "logs", "score-debug.svg");
-        yield* fs.writeFile(debugSvgPath, svgBuffer).pipe(
-          Effect.mapError(
-            (e) => new LilyPondError({ message: "debug svg write failed", cause: e }),
-          ),
-        );
-
         return svgBuffer;
       });
 

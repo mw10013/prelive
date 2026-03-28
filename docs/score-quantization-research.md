@@ -193,5 +193,5 @@ const endClamped = config.clampToNextOnset && nextStart !== undefined &&
 
 ## Suggested validation steps
 
-- Render a clip and inspect `logs/score-debug.svg`.
-- Compare VexFlow and LilyPond outputs for the same clip in the ScoreDisplay panel.
+- Compare VexFlow and LilyPond outputs side-by-side in the ScoreDisplay panel.
+- Tune tolerances in `src/lib/lilypond/quantizer.ts` and re-render to verify visual improvement.
