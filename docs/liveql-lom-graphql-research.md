@@ -109,14 +109,14 @@ Everything is traversed from `live_set`. One query fetches the entire object tre
 
 ### Types
 
-| Type       | Key Fields                                                                                                                | Notes                     |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------- |
-| `Song`     | `id`, `is_playing`, `view`, `tracks`, `track(index)`                                                                      | Root object               |
-| `SongView` | `selected_track`, `detail_clip`                                                                                           | UI selection state        |
-| `Track`    | `id`, `name`, `has_midi_input`, `clip_slots`, `clip_slot(index)`                                                          | Session tracks only       |
-| `ClipSlot` | `id`, `has_clip`, `clip`                                                                                                  | Session grid cell         |
-| `Clip`     | `id`, `name`, `length`, `looping`, `is_midi_clip`, `notes`                                                                | Notes are synthetic field |
-| `Note`     | `note_id`, `pitch`, `start_time`, `duration`, `velocity`, `mute`, `probability`, `velocity_deviation`, `release_velocity` | Data dict, not LOM object |
+| Type       | Key Fields                                                                                                                                                                        | Notes                              |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `Song`     | `id`, `path`, `is_playing`, `view`, `tracks`, `track(index)`                                                                                                                      | Root object                        |
+| `SongView` | `id`, `path`, `selected_track`, `detail_clip`                                                                                                                                     | UI selection state                 |
+| `Track`    | `id`, `path`, `name`, `has_midi_input`, `clip_slots`, `clip_slot(index)`                                                                                                          | Session tracks only                |
+| `ClipSlot` | `id`, `path`, `has_clip`, `clip`                                                                                                                                                  | Session grid cell                  |
+| `Clip`     | `id`, `path`, `name`, `length`, `looping`, `is_midi_clip`, `is_arrangement_clip`, `start_time`, `end_time`, `signature_numerator`, `signature_denominator`, `notes`               | `notes` is a synthetic field       |
+| `Note`     | `note_id`, `pitch`, `start_time`, `duration`, `velocity`, `mute`, `probability`, `velocity_deviation`, `release_velocity`                                                         | Data dict, not LOM object          |
 
 ### Mutations
 
@@ -134,9 +134,10 @@ Everything is traversed from `live_set`. One query fetches the entire object tre
 | `track_set_name`                   | Rename track                         | `Track.set("name", ...)`              |
 | `clip_get_notes_extended`          | Query notes by region                | `Clip.get_notes_extended(...)`        |
 | `clip_get_selected_notes_extended` | Query selected notes                 | `Clip.get_selected_notes_extended()`  |
+| `clip_get_all_notes_extended`      | Query all notes (explicit mutation)  | `Clip.get_all_notes_extended()`       |
 | `clip_select_all_notes`            | Select all notes                     | `Clip.select_all_notes()`             |
 
-### Notable: `clip_get_notes_extended` and `clip_get_selected_notes_extended` are modeled as mutations (not queries) because they call LOM functions. They return `NotesDictionary`, not `Clip`.
+### Notable: `clip_get_notes_extended`, `clip_get_selected_notes_extended`, and `clip_get_all_notes_extended` are modeled as mutations (not queries) because they call LOM functions. They return `NotesDictionary`, not `Clip`.
 
 ---
 
@@ -144,7 +145,7 @@ Everything is traversed from `live_set`. One query fetches the entire object tre
 
 ### 1. Read notes from a clip to display in a piano roll / note editor
 
-**Approach A — `Clip.notes` field (convenience):**
+Use the `notes` field on `Clip`:
 
 ```graphql
 {
@@ -172,35 +173,9 @@ Everything is traversed from `live_set`. One query fetches the entire object tre
 }
 ```
 
-- Resolves by calling `get_all_notes_extended(id)` — returns all notes regardless of loop boundaries
+- Resolves by calling `Clip.get_all_notes_extended()` (no args) — returns all notes regardless of loop boundaries
 - Returns notes sorted by start_time, then pitch
-
-**Approach B — explicit `clip_get_notes_extended` mutation:**
-
-```graphql
-mutation {
-  clip_get_notes_extended(
-    id: 42
-    from_pitch: 0
-    pitch_span: 128
-    from_time: 0
-    time_span: 16.0
-  ) {
-    notes {
-      note_id
-      pitch
-      start_time
-      duration
-      velocity
-    }
-  }
-}
-```
-
-- More control over pitch/time range
-- Can query sub-regions for performance with large clips
-
-**Recommendation**: Use `Clip.notes` for initial load. Use `clip_get_notes_extended` for sub-range queries if performance is an issue.
+- Only resolves for MIDI clips (`is_midi_clip` must be true); returns `null` for audio clips
 
 ### 2. Edit notes and write them back
 
