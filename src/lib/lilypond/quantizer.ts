@@ -9,6 +9,8 @@ interface QuantizationConfig {
   readonly startGridTolerance: number;
   readonly durationGrid: number;
   readonly durationAllowed: readonly number[];
+  readonly durationPreferred: readonly number[];
+  readonly durationPreferredTolerance: number;
   readonly durationLongThreshold: number;
   readonly durationToleranceShort: number;
   readonly durationToleranceLong: number;
@@ -43,6 +45,8 @@ const defaultQuantizationConfig: QuantizationConfig = {
     1 / 8,
     1 / 16,
   ],
+  durationPreferred: [4, 2, 1, 1 / 2, 1 / 4, 1 / 8, 1 / 16],
+  durationPreferredTolerance: 1 / 6,
   durationLongThreshold: 1,
   durationToleranceShort: 1 / 64,
   durationToleranceLong: 1 / 48,
@@ -117,6 +121,16 @@ const selectDuration = (
   start: number,
   config: QuantizationConfig,
 ): number => {
+  let preferredValue: number | undefined;
+  let preferredDiff = Number.POSITIVE_INFINITY;
+  for (const candidate of config.durationPreferred) {
+    const diff = Math.abs(rawDuration - candidate);
+    if (diff <= config.durationPreferredTolerance && diff < preferredDiff) {
+      preferredValue = candidate;
+      preferredDiff = diff;
+    }
+  }
+  if (preferredValue !== undefined) return preferredValue;
   const tolerance = rawDuration >= config.durationLongThreshold
     ? config.durationToleranceLong
     : config.durationToleranceShort;
