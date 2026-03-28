@@ -315,9 +315,14 @@ export const buildVexFlowPlan = Effect.fn("VexFlowScore.buildVexFlowPlan")(
       const quantized = yield* quantizeNotes(notes, config.quantization);
       const events = buildEvents(quantized, config.gridSize);
       const beatLength = 4 / config.timeSignature[1];
+      const measureLength = config.timeSignature[0] * beatLength;
       const staves = splitByClef(events, config.splitPoint).map((staff) => {
         const voices = assignVoices(staff.events);
-        const totalEnd = Math.max(0, ...staff.events.map((event) => event.start + event.duration));
+        const maxEnd = Math.max(0, ...staff.events.map((event) => event.start + event.duration));
+        const totalEnd = Math.max(
+          measureLength,
+          measureLength * Math.max(1, Math.ceil(maxEnd / measureLength)),
+        );
         const restKey = staff.clef === "bass" ? "d/3" : "b/4";
         const useExplicitStems = voices.length === 1;
         const voicePlans = voices.map((voice) => ({

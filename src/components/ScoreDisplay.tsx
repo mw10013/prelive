@@ -64,7 +64,7 @@ export function ScoreDisplay({
     const render = async () => {
       const VexFlow = await import("vexflow");
       if (cancelled) return;
-      const { Accidental, Dot, Formatter, Renderer, Stave, StaveConnector, StaveNote, Stem, Voice } = VexFlow;
+      const { Accidental, Beam, Dot, Formatter, Renderer, Stave, StaveConnector, StaveNote, Stem, Voice } = VexFlow;
       const width = Math.max(320, container.clientWidth || 640);
       const staffGap = 16;
       const staveWidth = Math.max(200, width - 20);
@@ -88,50 +88,63 @@ export function ScoreDisplay({
       vexflowPlan.staves.forEach((staff, staffIndex) => {
         const stave = staves[staffIndex];
         if (!stave) return;
-        const voices = staff.voices.flatMap((voice, voiceIndex) => {
-          if (voice.notes.length === 0) return [];
-          let voiceStem: "up" | "down" | undefined;
-          if (staff.voices.length > 1) {
-            voiceStem = voiceIndex % 2 === 0 ? "up" : "down";
-          }
-          const notes = voice.notes.map((noteSpec) => {
-            const stem = voiceStem ?? noteSpec.stem;
-            let stemDirection: number | undefined;
-            if (stem === "up") stemDirection = Stem.UP;
-            else if (stem === "down") stemDirection = Stem.DOWN;
-            const note = new StaveNote({
-              clef: staff.clef,
-              keys: [...noteSpec.keys],
-              duration: noteSpec.duration,
-              dots: noteSpec.dots,
-              type: noteSpec.type,
-              autoStem: stemDirection === undefined,
-              stemDirection,
-            });
-            if (noteSpec.type !== "r") {
-              noteSpec.keys.forEach((key, index) => {
-                const match = /^([a-g])(#+|b+|n)?/i.exec(key);
-                const accidental = match?.[2];
-                if (accidental) note.addModifier(new Accidental(accidental), index);
+        const beamGroups = Beam.getDefaultBeamGroups(timeSignature);
+        const { voices, beams } = staff.voices.reduce(
+          (acc, voice, voiceIndex) => {
+            if (voice.notes.length === 0) return acc;
+            let voiceStem: "up" | "down" | undefined;
+            if (staff.voices.length > 1) {
+              voiceStem = voiceIndex % 2 === 0 ? "up" : "down";
+            }
+            const notes = voice.notes.map((noteSpec) => {
+              const stem = voiceStem ?? noteSpec.stem;
+              let stemDirection: number | undefined;
+              if (stem === "up") stemDirection = Stem.UP;
+              else if (stem === "down") stemDirection = Stem.DOWN;
+              const note = new StaveNote({
+                clef: staff.clef,
+                keys: [...noteSpec.keys],
+                duration: noteSpec.duration,
+                dots: noteSpec.dots,
+                type: noteSpec.type,
+                autoStem: stemDirection === undefined,
+                stemDirection,
               });
-            }
-            if (noteSpec.dots > 0) {
-              for (let i = 0; i < noteSpec.dots; i += 1) {
-                Dot.buildAndAttach([note], { all: true });
+              if (noteSpec.type !== "r") {
+                noteSpec.keys.forEach((key, index) => {
+                  const match = /^([a-g])(#+|b+|n)?/i.exec(key);
+                  const accidental = match?.[2];
+                  if (accidental) note.addModifier(new Accidental(accidental), index);
+                });
               }
-            }
-            return note;
-          });
-          const vfVoice = new Voice(timeSignature);
-          vfVoice.setMode(Voice.Mode.SOFT);
-          vfVoice.addTickables(notes);
-          return [vfVoice];
-        });
+              if (noteSpec.dots > 0) {
+                for (let i = 0; i < noteSpec.dots; i += 1) {
+                  Dot.buildAndAttach([note], { all: true });
+                }
+              }
+              return note;
+            });
+            const vfVoice = new Voice(timeSignature);
+            vfVoice.setMode(Voice.Mode.SOFT);
+            vfVoice.addTickables(notes);
+            const voiceBeams = Beam.generateBeams(notes, {
+              groups: beamGroups,
+              stemDirection: voiceStem === "up" ? Stem.UP : voiceStem === "down" ? Stem.DOWN : undefined,
+            });
+            acc.voices.push(vfVoice);
+            acc.beams.push(...voiceBeams);
+            return acc;
+          },
+          { voices: [] as InstanceType<typeof Voice>[], beams: [] as InstanceType<typeof Beam>[] },
+        );
         if (voices.length === 0) return;
         const formatter = new Formatter();
         formatter.joinVoices(voices).formatToStave(voices, stave, { alignRests: true });
         voices.forEach((voice) => {
           voice.draw(ctx, stave);
+        });
+        beams.forEach((beam) => {
+          beam.setContext(ctx).draw();
         });
       });
       if (staves.length > 1) {
