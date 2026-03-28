@@ -27,7 +27,6 @@ Downloaded source code of libraries are in `refs/` for reference.
 - **Base UI**: `refs/base-ui/docs/src/app/(docs)/(content)/react/` (MDX files in subdirs)
 - **Effect v4 Docs**: `refs/effect4/ai-docs/src/`
 - **LilyPond**: `refs/lilypond/` — Music engraving program (master branch)
-- **MidiWriterJS**: `refs/midi-writer/src/` — MIDI file generation library
 
 ## Commands
 

@@ -21,7 +21,6 @@
     "refs:tan-table": "rm -rf refs/tan-table && mkdir -p refs/tan-table && curl -L https://github.com/TanStack/table/archive/refs/tags/v8.21.3.tar.gz | tar -xz -C refs/tan-table --strip-components=1",
     "refs:liveql": "rm -rf refs/liveql && mkdir -p refs/liveql && curl -L https://github.com/mw10013/ableton-live-liveql/archive/refs/heads/main.tar.gz | tar -xz -C refs/liveql --strip-components=1",
     "refs:lilypond": "rm -rf refs/lilypond && mkdir -p refs/lilypond && curl -L https://github.com/lilypond/lilypond/archive/refs/heads/master.tar.gz | tar -xz -C refs/lilypond --strip-components=1",
-    "refs:midi-writer": "rm -rf refs/midi-writer && mkdir -p refs/midi-writer && curl -L https://github.com/grimmdude/MidiWriterJS/archive/refs/tags/v3.2.1.tar.gz | tar -xz -C refs/midi-writer --strip-components=1",
     "refs:vexflow": "rm -rf refs/vexflow && mkdir -p refs/vexflow && curl -L https://github.com/vexflow/vexflow/archive/refs/tags/5.0.0.tar.gz | tar -xz -C refs/vexflow --strip-components=1"
   },
   "dependencies": {
@@ -39,7 +38,6 @@
     "clsx": "2.1.1",
     "effect": "4.0.0-beta.38",
     "lucide-react": "0.562.0",
-    "midi-writer-js": "3.2.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "tailwind-merge": "3.4.0",

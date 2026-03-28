@@ -8,14 +8,7 @@ Goal: improve score readability by quantizing performance note lists before Lily
 
 ## Problem framing
 
-The note list is performance data, but we currently notate it too literally. That yields awkward durations and beaming. The docs already frame this as a quantization problem:
-
-```
-Converting raw MIDI events into readable sheet music notation is a quantization + inference problem:
-- MIDI has exact timing (ticks), notation needs quantized durations (quarter, eighth, etc.)
-```
-
-`docs/midi-to-score-pipeline-research.md`
+The note list is performance data, but we currently notate it too literally. That yields awkward durations and beaming.
 
 ---
 
@@ -23,12 +16,10 @@ Converting raw MIDI events into readable sheet music notation is a quantization 
 
 We render both LilyPond (server-side) and VexFlow (client-side). Both paths share the same quantizer.
 
-LilyPond rendering uses quantizeNotes, writes debug artifacts, then runs lilypond:
+LilyPond rendering uses quantizeNotes, then runs lilypond:
 
 ```
 const quantized = yield* quantizeNotes(notes);
-const midiBuffer = notesToMidiFile(quantized);
-...
 const lyContent = notesToLilyPond(quantized);
 ...
 ChildProcess.make("lilypond", ["-dbackend=svg", "-o", outputBase, tmpLy]);
@@ -202,8 +193,5 @@ const endClamped = config.clampToNextOnset && nextStart !== undefined &&
 
 ## Suggested validation steps
 
-- Render a clip and compare LilyPond debug artifacts:
-  - `logs/score-debug.mid`
-  - `logs/score-debug.ly`
-  - `logs/score-debug.svg`
+- Render a clip and inspect `logs/score-debug.svg`.
 - Compare VexFlow and LilyPond outputs for the same clip in the ScoreDisplay panel.
