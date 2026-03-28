@@ -13,7 +13,15 @@ interface VexFlowOptions {
 }
 
 export interface VexFlowVoicePlan {
-  readonly notes: readonly string[];
+  readonly notes: readonly VexFlowNoteSpec[];
+}
+
+export interface VexFlowNoteSpec {
+  readonly keys: readonly string[];
+  readonly duration: string;
+  readonly dots: number;
+  readonly type?: "r";
+  readonly stem?: "up" | "down";
 }
 
 export interface VexFlowStaffPlan {
@@ -116,10 +124,10 @@ const sortedBy = <T>(values: readonly T[], compare: (a: T, b: T) => number): rea
   return result;
 };
 
-const pitchToEasyScore = (pitch: number): string => {
+const pitchToKey = (pitch: number): string => {
   const octave = Math.floor(pitch / 12) - 1;
   const name = noteNames[pitch % 12] ?? "c";
-  return `${name}${String(octave)}`;
+  return `${name}/${String(octave)}`;
 };
 
 const splitDuration = (beats: number): readonly DurationToken[] => {
@@ -137,34 +145,24 @@ const splitDuration = (beats: number): readonly DurationToken[] => {
     : [{ beats: 0.25, duration: "16", dots: 0 }];
 };
 
-const formatChord = (pitches: readonly number[]): string => {
-  if (pitches.length === 1) return pitchToEasyScore(pitches[0] ?? 60);
-  const parts = pitches.map((pitch) => pitchToEasyScore(pitch));
-  return `(${parts.join(" ")})`;
-};
-
-const formatToken = (
-  chord: string,
-  token: DurationToken,
-  isRest: boolean,
-  stem?: "up" | "down",
-): string => {
-  const dots = ".".repeat(token.dots);
-  const stemOption = stem ? `[stem="${stem}"]` : "";
-  return isRest
-    ? `${chord}/${token.duration}/r${dots}${stemOption}`
-    : `${chord}/${token.duration}${dots}${stemOption}`;
-};
-
-const tokensForDuration = (
+const notesForDuration = (
   duration: number,
   pitches: readonly number[],
   restKey: string,
   stem?: "up" | "down",
-): readonly string[] => {
+): readonly VexFlowNoteSpec[] => {
   const parts = splitDuration(duration);
-  const chord = pitches.length > 0 ? formatChord(pitches) : restKey;
-  return parts.map((part) => formatToken(chord, part, pitches.length === 0, stem));
+  const keys = pitches.length > 0
+    ? pitches.map((pitch) => pitchToKey(pitch))
+    : [restKey];
+  const isRest = pitches.length === 0;
+  return parts.map((part) => ({
+    keys,
+    duration: part.duration,
+    dots: part.dots,
+    type: isRest ? "r" : undefined,
+    stem: isRest ? undefined : stem,
+  }));
 };
 
 const buildEvents = (notes: readonly Note[], gridSize: number): readonly Event[] => {
@@ -220,30 +218,30 @@ const stemForPitches = (
   return average >= middleLine ? "down" : "up";
 };
 
-const voiceToTokens = (
+const voiceToNotes = (
   events: readonly Event[],
   totalEnd: number,
   restKey: string,
   clef: "treble" | "bass",
   useExplicitStems: boolean,
-): readonly string[] => {
-  const tokens: string[] = [];
+): readonly VexFlowNoteSpec[] => {
+  const notes: VexFlowNoteSpec[] = [];
   let cursor = 0;
   for (const event of events) {
     if (event.start > cursor + epsilon) {
       const restDuration = event.start - cursor;
-      tokens.push(...tokensForDuration(restDuration, [], restKey));
+      notes.push(...notesForDuration(restDuration, [], restKey));
     }
     const stem = useExplicitStems && event.pitches.length > 0
       ? stemForPitches(event.pitches, clef)
       : undefined;
-    tokens.push(...tokensForDuration(event.duration, event.pitches, restKey, stem));
+    notes.push(...notesForDuration(event.duration, event.pitches, restKey, stem));
     cursor = event.start + event.duration;
   }
   if (cursor + epsilon < totalEnd) {
-    tokens.push(...tokensForDuration(totalEnd - cursor, [], restKey));
+    notes.push(...notesForDuration(totalEnd - cursor, [], restKey));
   }
-  return tokens;
+  return notes;
 };
 
 const splitByClef = (
@@ -279,10 +277,10 @@ export const buildVexFlowPlan = Effect.fn("VexFlowScore.buildVexFlowPlan")(
       const staves = splitByClef(events, config.splitPoint).map((staff) => {
         const voices = assignVoices(staff.events);
         const totalEnd = Math.max(0, ...staff.events.map((event) => event.start + event.duration));
-        const restKey = staff.clef === "bass" ? "d3" : "b4";
+        const restKey = staff.clef === "bass" ? "d/3" : "b/4";
         const useExplicitStems = voices.length === 1;
         const voicePlans = voices.map((voice) => ({
-          notes: voiceToTokens(voice.events, totalEnd, restKey, staff.clef, useExplicitStems),
+          notes: voiceToNotes(voice.events, totalEnd, restKey, staff.clef, useExplicitStems),
         }));
         return { clef: staff.clef, voices: voicePlans };
       });

@@ -64,35 +64,86 @@ export function ScoreDisplay({
     const render = async () => {
       const VexFlow = await import("vexflow");
       if (cancelled) return;
-      const { Factory, Voice, StaveConnector } = VexFlow;
+      const { Accidental, Dot, Formatter, Renderer, Stave, StaveConnector, StaveNote, Stem, Voice } = VexFlow;
       const width = Math.max(320, container.clientWidth || 640);
-      const height = Math.max(200, vexflowPlan.staves.length * 180);
-      const vf = Factory.newFromElementId(vexflowElementId, width, height);
-      const score = vf.EasyScore();
-      score.set({ time: timeSignature });
-      const system = vf.System({ width, x: 0, y: 0, spaceBetweenStaves: 16 });
-      vexflowPlan.staves.forEach((staff) => {
+      const staffGap = 16;
+      const staveWidth = Math.max(200, width - 20);
+      const probeStave = new Stave(0, 0, staveWidth);
+      const staveHeight = probeStave.getBottomY();
+      const height = Math.max(
+        200,
+        20 + vexflowPlan.staves.length * staveHeight + Math.max(0, vexflowPlan.staves.length - 1) * staffGap,
+      );
+      const renderer = new Renderer(container, Renderer.Backends.SVG);
+      renderer.resize(width, height);
+      const ctx = renderer.getContext();
+      let currentY = 10;
+      const staves = vexflowPlan.staves.map((staff) => {
+        const stave = new Stave(10, currentY, staveWidth);
+        stave.addClef(staff.clef).addTimeSignature(timeSignature);
+        stave.setContext(ctx).draw();
+        currentY = stave.getBottomY() + staffGap;
+        return stave;
+      });
+      vexflowPlan.staves.forEach((staff, staffIndex) => {
+        const stave = staves[staffIndex];
+        if (!stave) return;
         const voices = staff.voices.flatMap((voice, voiceIndex) => {
           if (voice.notes.length === 0) return [];
-          const notesLine = voice.notes.join(", ");
-          const noteOptions: { clef: "treble" | "bass"; stem?: "up" | "down" } = {
-            clef: staff.clef,
-          };
+          let voiceStem: "up" | "down" | undefined;
           if (staff.voices.length > 1) {
-            noteOptions.stem = voiceIndex % 2 === 0 ? "up" : "down";
+            voiceStem = voiceIndex % 2 === 0 ? "up" : "down";
           }
-          const notes = score.notes(notesLine, noteOptions);
-          const vfVoice = score.voice(notes, { time: timeSignature });
+          const notes = voice.notes.map((noteSpec) => {
+            const stem = voiceStem ?? noteSpec.stem;
+            let stemDirection: number | undefined;
+            if (stem === "up") stemDirection = Stem.UP;
+            else if (stem === "down") stemDirection = Stem.DOWN;
+            const note = new StaveNote({
+              clef: staff.clef,
+              keys: [...noteSpec.keys],
+              duration: noteSpec.duration,
+              dots: noteSpec.dots,
+              type: noteSpec.type,
+              autoStem: stemDirection === undefined,
+              stemDirection,
+            });
+            if (noteSpec.type !== "r") {
+              noteSpec.keys.forEach((key, index) => {
+                const match = /^([a-g])(#+|b+|n)?/i.exec(key);
+                const accidental = match?.[2];
+                if (accidental) note.addModifier(new Accidental(accidental), index);
+              });
+            }
+            if (noteSpec.dots > 0) {
+              for (let i = 0; i < noteSpec.dots; i += 1) {
+                Dot.buildAndAttach([note], { all: true });
+              }
+            }
+            return note;
+          });
+          const vfVoice = new Voice(timeSignature);
           vfVoice.setMode(Voice.Mode.SOFT);
+          vfVoice.addTickables(notes);
           return [vfVoice];
         });
         if (voices.length === 0) return;
-        system.addStave({ voices }).addClef(staff.clef).addTimeSignature(timeSignature);
+        const formatter = new Formatter();
+        formatter.joinVoices(voices).formatToStave(voices, stave, { alignRests: true });
+        voices.forEach((voice) => {
+          voice.draw(ctx, stave);
+        });
       });
-      if (vexflowPlan.staves.length > 1) {
-        system.addConnector().setType(StaveConnector.type.BRACKET);
+      if (staves.length > 1) {
+        const firstStave = staves.at(0);
+        const lastStave = staves.at(-1);
+        if (firstStave && lastStave) {
+          new StaveConnector(firstStave, lastStave)
+            .setType(StaveConnector.type.BRACKET)
+            .setContext(ctx)
+            .draw();
+        }
       }
-      vf.draw();
     };
     void render();
     return () => {
