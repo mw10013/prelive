@@ -268,6 +268,10 @@ const splitByClef = (
   return [];
 };
 
+/** Plan is rendered with the low-level VexFlow API (StaveNote / Voice / Formatter)
+ * rather than EasyScore. EasyScore converts notes to/from strings, losing tick
+ * precision and making rest placement fragile. The low-level path lets the
+ * Formatter use Fraction-based tick accounting and alignRestsToNotes natively. */
 export const buildVexFlowPlan = Effect.fn("VexFlowScore.buildVexFlowPlan")(
   (notes: readonly Note[], options?: Partial<VexFlowOptions>) =>
     Effect.gen(function* () {
