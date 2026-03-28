@@ -2,7 +2,7 @@
 
 Date: 2026-03-27
 
-Goal: improve score readability by quantizing performance note lists before LilyPond notation.
+Goal: improve score readability by quantizing performance note lists before LilyPond/VexFlow notation.
 
 ---
 
@@ -19,30 +19,41 @@ Converting raw MIDI events into readable sheet music notation is a quantization 
 
 ---
 
-## Current pipeline evidence (direct LilyPond)
+## Current pipeline evidence (LilyPond + VexFlow)
 
-We generate LilyPond directly from notes; MIDI is a debug artifact only:
+We render both LilyPond (server-side) and VexFlow (client-side). Both paths share the same quantizer.
+
+LilyPond rendering uses quantizeNotes, writes debug artifacts, then runs lilypond:
 
 ```
-const lyContent = notesToLilyPond(notes);
+const quantized = yield* quantizeNotes(notes);
+const midiBuffer = notesToMidiFile(quantized);
+...
+const lyContent = notesToLilyPond(quantized);
 ...
 ChildProcess.make("lilypond", ["-dbackend=svg", "-o", outputBase, tmpLy]);
 ```
 
 `src/lib/lilypond/renderer.ts`
 
-Quantization is a fixed grid and is applied via rounding:
+VexFlow uses the same quantizer before building the render plan:
 
 ```
-export const quantizeNotes = (notes, gridSize = 1 / 16) =>
-  notes.map((note) => ({
-    ...note,
-    start_time: Math.round(note.start_time / gridSize) * gridSize,
-    duration: Math.round(note.duration / gridSize) * gridSize,
-  }));
+const quantized = yield* quantizeNotes(notes, config.quantization);
+const events = buildEvents(quantized, config.gridSize);
 ```
 
-`src/lib/lilypond/midi.ts`
+`src/lib/vexflow/score.ts`
+
+The UI renders both outputs side-by-side (LilyPond via server fn, VexFlow via client render):
+
+```
+const response = await renderLilyPondSvg({ data: { notes: noteData } });
+...
+const plan = Effect.runSync(buildVexFlowPlan(notes, { timeSignature: [_timeSigNum, _timeSigDen] }));
+```
+
+`src/components/ScoreDisplay.tsx`
 
 Durations that do not map cleanly are split into dotted/undotted tokens:
 
@@ -62,6 +73,22 @@ const splitDuration = (beats) => {
 ```
 
 `src/lib/lilypond/score.ts`
+
+Both renderers also apply a grid-based grouping step when building events:
+
+```
+const start = roundToGrid(note.start_time, gridSize);
+const duration = roundToGrid(note.duration, gridSize);
+```
+
+`src/lib/lilypond/score.ts`
+
+```
+const start = roundToGrid(note.start_time, gridSize);
+const duration = roundToGrid(note.duration, gridSize);
+```
+
+`src/lib/vexflow/score.ts`
 
 ---
 
@@ -88,30 +115,71 @@ const splitDuration = (beats) => {
 
 ---
 
-## Proposed quantization model (conceptual)
+## Current quantization model (implemented)
 
-### 1) Start time quantization (stable, fixed grid)
+### 1) Start time quantization (strong-grid bias + fallback)
 
-- Default grid: 1/16 note.
-- Snap start_time to nearest grid with tolerance; values within tolerance of a grid line snap cleanly.
-- Prefer stronger beats when close: attempt {1/4, 1/8} snaps first, then fall back to 1/16.
-- Optionally infer grid from note-start deltas by choosing the closest of {1/4, 1/8, 1/16, 1/32}.
+- Default grid: 1/16.
+- Prefer strong grids first: {1/4, 1/8} with tolerance 1/32; if matched, snap.
+- Otherwise snap to 1/16 within tolerance 1/64; if not within tolerance, round to 1/16 anyway.
 
-### 2) Duration quantization (heuristic, value set)
+Implementation:
+
+```
+for (const grid of config.startStrongGrids) {
+  const snapped = snapToGrid(value, grid, config.startStrongTolerance);
+  if (snapped !== undefined) return snapped;
+}
+const baseSnap = snapToGrid(value, config.startGrid, config.startGridTolerance);
+return baseSnap ?? roundToGrid(value, config.startGrid);
+```
+
+`src/lib/lilypond/quantizer.ts`
+
+### 2) Duration quantization (preferred values + allowed set)
 
 - Quantize duration separately from start_time.
-- Prefer clean values over literal rounded values:
-  - Allowed set: 1, 1/2, 1/4, 1/8, 1/16, plus dotted versions (3/2, 3/4, 3/8, 3/16).
-  - Tuplets off by default; enable only if the clip clearly uses triplets.
-- If a duration is within tolerance of an allowed value, snap to it.
-- Otherwise snap to nearest grid and let existing tie-splitting handle longer spans.
-- Optional clamp: if the next onset in the same voice is within tolerance of the computed end, clamp end to that onset.
+- Prefer values if within tolerance 1/6 beats: [4, 2, 1, 1/2, 1/4, 1/8, 1/16].
+- Otherwise choose from allowed set with short/long tolerances:
+  - Allowed: [4, 3, 2, 3/2, 1, 3/4, 1/2, 3/8, 1/4, 1/8, 1/16].
+  - Tolerance: 1/64 for durations < 1 beat, 1/48 for durations >= 1 beat.
+- Dotted values [3/2, 3/4, 3/8] are allowed only when start and end align to a 1/8 grid within 1/64.
+- If no candidate matches, round duration to 1/16.
 
-### 3) End alignment heuristics
+Implementation:
 
-- Compute end_time = start_time + duration.
-- Snap end_time to grid (or allowed value) then recompute duration.
-- If the note end is within tolerance of the next onset in the same voice, clamp to that onset to avoid micro-overlaps.
+```
+if (preferredValue !== undefined) return preferredValue;
+const tolerance = rawDuration >= config.durationLongThreshold
+  ? config.durationToleranceLong
+  : config.durationToleranceShort;
+...
+return bestValue ?? roundToGrid(rawDuration, config.durationGrid);
+```
+
+`src/lib/lilypond/quantizer.ts`
+
+### 3) End alignment + clamp
+
+- Compute end from the selected duration.
+- Snap end to 1/16 if within 1/64; then if there is no next onset, try a strong end snap to 1/4 within 1/8.
+- If the next onset (based on the next unique quantized start) is within 1/8, clamp end to that onset.
+- Normalize final duration to a 1/1024 grid.
+
+Implementation:
+
+```
+const endSnapped = snapToGrid(endPre, config.endGrid, config.endGridTolerance) ?? endPre;
+const endStrong = nextStart === undefined
+  ? (snapToGrid(endSnapped, config.endStrongGrid, config.endStrongTolerance) ?? endSnapped)
+  : endSnapped;
+const endClamped = config.clampToNextOnset && nextStart !== undefined &&
+  isClose(endStrong, nextStart, config.endClampTolerance)
+  ? nextStart
+  : endStrong;
+```
+
+`src/lib/lilypond/quantizer.ts`
 
 ---
 
@@ -125,41 +193,17 @@ const splitDuration = (beats) => {
 
 ## Open questions for iteration
 
-- Tolerance thresholds for start_time vs duration snapping.
-
-Start with constants and tune. Proposal:
-
-- Start-time tolerances: strong beats (1/4 or 1/8) within 1/32 beat, base grid (1/16) within 1/64 beat.
-- Duration tolerances: within 1/64 beat for allowed values; allow a looser 1/48 beat for long values (>= 1 beat).
-- End clamp tolerance: 1/64 beat to avoid overlaps without swallowing intentional gaps.
-
-- Whether to allow dotted values by default or only when clearly intended.
-
-Suggestion: only allow dotted when both start and end align to the same 1/8 grid and the duration is within tolerance of {3/8, 3/4, 3/2}. Otherwise prefer straight values and ties.
-
-- How to detect triplet usage in a clip without explicit metadata.
-
-Defer
-
-We want to use effect v4 for the implementation.
-
-Effect v4 guidance from `refs/effect4/ai-docs/src/01_effect/01_basics/index.md`:
-
-```
-Prefer writing Effect code with Effect.gen & Effect.fn("name"). Then attach additional behaviour with combinators.
-```
-
-Effect v4 guidance from `refs/effect4/ai-docs/src/01_effect/02_services/index.md`:
-
-```
-Effect services are the most common way to structure Effect code. Prefer using services to encapsulate behaviour...
-```
+- Whether the 1/6 preferred-value tolerance is too wide for short clips.
+- Whether dotted gating (1/8 alignment) should be configurable per clip.
+- Whether next-onset clamping should be disabled for legato passages.
+- Triplet detection remains unimplemented.
 
 ---
 
 ## Suggested validation steps
 
-- Render current clip with debug artifacts and compare before/after:
+- Render a clip and compare LilyPond debug artifacts:
+  - `logs/score-debug.mid`
   - `logs/score-debug.ly`
   - `logs/score-debug.svg`
-- Use the same input notes to confirm that the visual rhythm improves and bar placement remains stable.
+- Compare VexFlow and LilyPond outputs for the same clip in the ScoreDisplay panel.
