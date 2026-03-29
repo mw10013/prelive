@@ -58,6 +58,16 @@ export const togglePlay = createServerFn({ method: "POST" })
     return result.song_start_playing?.is_playing ?? true;
   });
 
+export const fireClip = createServerFn({ method: "POST" })
+  .inputValidator((data: { clipId: number }) => data)
+  .handler(async ({ data: { clipId } }) => {
+    await gql(
+      `mutation($id: Int!) { clip_fire(id: $id) { id } }`,
+      Schema.Struct({ clip_fire: Schema.Struct({ id: Schema.Number }) }),
+      { id: clipId },
+    );
+  });
+
 interface WriteNotesInput {
   clipId: number;
   newNotes: Domain.NoteInput[];

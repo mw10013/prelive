@@ -7,7 +7,7 @@ import { NoteTable } from "@/components/NoteTable";
 import { ScoreDisplay } from "@/components/ScoreDisplay";
 import { Button } from "@/components/ui/button";
 import { type Note } from "@/lib/Domain";
-import { readClip, togglePlay, writeNotes } from "@/lib/liveql";
+import { fireClip, readClip, togglePlay, writeNotes } from "@/lib/liveql";
 
 interface ClipInfo {
   id: number;
@@ -64,6 +64,8 @@ function RouteComponent() {
 
   const { mutate: togglePlayMutate, isPending: isTogglePlayPending } =
     useMutation({ mutationFn: togglePlay });
+
+  const fireClipMutation = useMutation({ mutationFn: fireClip });
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -153,6 +155,14 @@ function RouteComponent() {
           disabled={!clipInfo}
         >
           + Note
+        </Button>
+        <Button
+          onClick={() => {
+            if (clipInfo) fireClipMutation.mutate({ data: { clipId: clipInfo.id } });
+          }}
+          disabled={!clipInfo || notes.length === 0 || fireClipMutation.isPending}
+        >
+          {fireClipMutation.isPending ? "Firing…" : "Play Clip"}
         </Button>
         {clipInfo && (
           <span className="ml-auto text-sm text-muted-foreground">
