@@ -127,9 +127,12 @@ export function ScoreDisplay({
             const vfVoice = new Voice(timeSignature);
             vfVoice.setMode(Voice.Mode.SOFT);
             vfVoice.addTickables(notes);
+            let beamStemDirection: number | undefined;
+            if (voiceStem === "up") beamStemDirection = Stem.UP;
+            else if (voiceStem === "down") beamStemDirection = Stem.DOWN;
             const voiceBeams = Beam.generateBeams(notes, {
               groups: beamGroups,
-              stemDirection: voiceStem === "up" ? Stem.UP : voiceStem === "down" ? Stem.DOWN : undefined,
+              stemDirection: beamStemDirection,
             });
             acc.voices.push(vfVoice);
             acc.beams.push(...voiceBeams);

@@ -123,6 +123,7 @@ Everything is traversed from `live_set`. One query fetches the entire object tre
 | Mutation                           | Effect                               | LOM Call                              |
 | ---------------------------------- | ------------------------------------ | ------------------------------------- |
 | `song_start_playing`               | Start transport                      | `Song.start_playing()`                |
+| `song_continue_playing`            | Continue transport                   | `Song.continue_playing()`             |
 | `song_stop_playing`                | Stop transport                       | `Song.stop_playing()`                 |
 | `clip_fire`                        | Launch clip                          | `Clip.fire()`                         |
 | `clip_add_new_notes`               | Add notes to clip                    | `Clip.add_new_notes(dict)`            |
@@ -255,6 +256,11 @@ mutation {
 ```graphql
 mutation {
   song_start_playing(id: 1) {
+    is_playing
+  }
+}
+mutation {
+  song_continue_playing(id: 1) {
     is_playing
   }
 }
@@ -399,4 +405,3 @@ Priority order for note editor use case:
 **liveql gives us a solid foundation for a note editor.** The current schema covers the core workflow: navigate to a clip, read its notes, add/modify/remove notes, fire clips, control transport. `Clip.notes` returns all notes via `get_all_notes_extended`, including notes in loop iterations.
 
 **The main app architecture** should be: TanStack Query manages caching and invalidation of GraphQL queries. The user selects a clip in Ableton (via `detail_clip`), the app fetches its notes, renders a piano roll, and writes mutations back through liveql. Effect Schemas validate all wire data.
-

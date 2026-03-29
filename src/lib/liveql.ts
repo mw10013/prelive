@@ -47,15 +47,15 @@ export const togglePlay = createServerFn({ method: "POST" })
       return result.song_stop_playing?.is_playing ?? false;
     }
     const result = await gql(
-      `mutation($id: Int!) { song_start_playing(id: $id) { is_playing } }`,
+      `mutation($id: Int!) { song_continue_playing(id: $id) { is_playing } }`,
       Schema.Struct({
-        song_start_playing: Schema.NullOr(
+        song_continue_playing: Schema.NullOr(
           Schema.Struct({ is_playing: Schema.Boolean }),
         ),
       }),
       { id: live_set.id },
     );
-    return result.song_start_playing?.is_playing ?? true;
+    return result.song_continue_playing?.is_playing ?? true;
   });
 
 export const fireClip = createServerFn({ method: "POST" })
