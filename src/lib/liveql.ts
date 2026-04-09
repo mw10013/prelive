@@ -22,6 +22,80 @@ export const readClip = createServerFn({ method: "GET" }).handler(async () => {
   );
 });
 
+export const readLiveSetOverview = createServerFn({ method: "GET" }).handler(
+  async () => {
+    return gql(
+      `{ live_set {
+          id path is_playing
+          view {
+            id path
+            selected_track { id path has_midi_input name }
+            detail_clip {
+              id path end_time is_arrangement_clip is_midi_clip length looping name
+              signature_denominator signature_numerator start_time
+            }
+          }
+          tracks {
+            id path has_midi_input name
+            clip_slots {
+              id path has_clip
+              clip {
+                id path end_time is_arrangement_clip is_midi_clip length looping name
+                signature_denominator signature_numerator start_time
+              }
+            }
+          }
+        } }`,
+      Schema.Struct({
+        live_set: Schema.Struct({
+          ...Domain.SongOverview.fields,
+          view: Schema.Struct({
+            ...Domain.SongView.fields,
+            selected_track: Schema.NullOr(Domain.Track),
+            detail_clip: Schema.NullOr(Domain.Clip),
+          }),
+        }),
+      }),
+    );
+  },
+);
+
+export const readClipBySlot = createServerFn({ method: "GET" })
+  .inputValidator((data: { trackIndex: number; slotIndex: number }) => data)
+  .handler(async ({ data: { trackIndex, slotIndex } }) => {
+    return gql(
+      `query ($trackIndex: Int!, $slotIndex: Int!) {
+        live_set {
+          track(index: $trackIndex) {
+            name
+            clip_slot(index: $slotIndex) {
+              clip {
+                id name path length is_midi_clip
+                signature_numerator signature_denominator
+                notes { note_id pitch start_time duration velocity mute probability velocity_deviation release_velocity }
+              }
+            }
+          }
+        }
+      }`,
+      Schema.Struct({
+        live_set: Schema.Struct({
+          track: Schema.NullOr(
+            Schema.Struct({
+              name: Schema.String,
+              clip_slot: Schema.NullOr(
+                Schema.Struct({
+                  clip: Schema.NullOr(Domain.ClipWithNotes),
+                }),
+              ),
+            }),
+          ),
+        }),
+      }),
+      { trackIndex, slotIndex },
+    );
+  });
+
 export const togglePlay = createServerFn({ method: "POST" })
   .inputValidator((data: Record<string, never>) => data)
   .handler(async () => {
